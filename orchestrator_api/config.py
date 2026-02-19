@@ -10,6 +10,7 @@ load_dotenv()
 class Settings:
     mcp_base_url: str = os.getenv("MCP_BASE_URL", "http://127.0.0.1:8100")
     rag_index_name: str = os.getenv("RAG_INDEX_NAME", "default")
+    rag_min_score: float = float(os.getenv("RAG_MIN_SCORE", "0.12"))
     llm_api_key: str = os.getenv("LLM_API_KEY", "")
     llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
     llm_base_url: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")

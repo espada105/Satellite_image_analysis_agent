@@ -6,12 +6,10 @@ if (!userId) {
 const chatLog = document.getElementById("chatLog");
 const chatForm = document.getElementById("chatForm");
 const questionInput = document.getElementById("question");
-const imageUriInput = document.getElementById("imageUri");
 const imageFileInput = document.getElementById("imageFile");
-const opsInput = document.getElementById("ops");
 const logoutBtn = document.getElementById("logoutBtn");
 
-function appendMessage(role, text) {
+function appendTextMessage(role, text) {
   const div = document.createElement("div");
   div.className = `msg ${role}`;
   div.textContent = text;
@@ -40,23 +38,105 @@ function appendImageMessage(role, src, caption = "") {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-function toPreviewSrc(imageUri) {
-  if (!imageUri) {
-    return "";
+function appendStructuredResponse(data) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "msg bot";
+
+  const title = document.createElement("div");
+  title.className = "resp-title";
+  title.textContent = "Response Summary";
+  wrapper.appendChild(title);
+
+  const answer = document.createElement("div");
+  answer.className = "resp-section";
+  answer.innerHTML = `<strong>Answer</strong><br>${escapeHtml(data.answer || "")}`;
+  wrapper.appendChild(answer);
+
+  const tools = data.trace?.tools || [];
+  const ragRoute = tools.find((tool) => tool.startsWith("route.rag:")) || "route.rag:false";
+  const mcpRoute = tools.find((tool) => tool.startsWith("route.mcp:")) || "route.mcp:false";
+
+  const trace = document.createElement("div");
+  trace.className = "resp-section";
+  trace.innerHTML = `<strong>Pipeline</strong><br>${escapeHtml(tools.join(", "))}<br>latency: ${data.trace?.latency_ms || 0} ms`;
+  wrapper.appendChild(trace);
+
+  const rag = document.createElement("div");
+  rag.className = "resp-section";
+  rag.innerHTML = `<strong>RAG</strong><br>decision: ${escapeHtml(ragRoute)}<br>hits: ${data.citations?.length || 0}`;
+  if ((data.citations?.length || 0) > 0) {
+    const ul = document.createElement("ul");
+    ul.className = "resp-list";
+    data.citations.forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = `${item.doc_id} | ${item.chunk_id} | score=${item.score}`;
+      ul.appendChild(li);
+    });
+    rag.appendChild(ul);
   }
-  if (imageUri.startsWith("http://") || imageUri.startsWith("https://") || imageUri.startsWith("/")) {
-    return imageUri;
+  wrapper.appendChild(rag);
+
+  const mcp = document.createElement("div");
+  mcp.className = "resp-section";
+  const opNames = (data.analysis?.ops || []).map((op) => op.name).join(", ") || "(none)";
+  mcp.innerHTML = `<strong>MCP</strong><br>decision: ${escapeHtml(mcpRoute)}<br>ops: ${escapeHtml(opNames)}`;
+  if (data.analysis?.error) {
+    const err = document.createElement("div");
+    err.className = "resp-error";
+    err.textContent = `error: ${data.analysis.error}`;
+    mcp.appendChild(err);
   }
-  if (imageUri.startsWith("data/imagery/")) {
-    return imageUri.replace("data/imagery", "/imagery");
+  if (data.analysis?.ops?.length) {
+    const ul = document.createElement("ul");
+    ul.className = "resp-list";
+    data.analysis.ops.forEach((op) => {
+      const li = document.createElement("li");
+      li.textContent = `${op.name}: ${op.summary} | stats=${JSON.stringify(op.stats || {})}`;
+      ul.appendChild(li);
+    });
+    mcp.appendChild(ul);
   }
-  return imageUri;
+  wrapper.appendChild(mcp);
+
+  chatLog.appendChild(wrapper);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function appendStatus(event) {
+  if (event.stage === "llm") {
+    appendTextMessage("bot", "[stream] LLM 답변 생성 중...");
+    return;
+  }
+  if (event.stage === "rag") {
+    appendTextMessage(
+      "bot",
+      `[stream] RAG used=${event.used} hits=${event.hits} min_score=${event.min_score}`,
+    );
+    return;
+  }
+  if (event.stage === "mcp") {
+    appendTextMessage(
+      "bot",
+      `[stream] MCP invoked=${event.invoked} ops=${(event.ops || []).join(",") || "(none)"}`,
+    );
+    return;
+  }
+  appendTextMessage("bot", `[stream] ${event.stage || "processing"}`);
+}
+
+function escapeHtml(text) {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 async function uploadSelectedImage() {
   const file = imageFileInput?.files?.[0];
   if (!file) {
-    return { imageUri: null, previewUrl: null, fileName: null };
+    return null;
   }
 
   const formData = new FormData();
@@ -73,62 +153,76 @@ async function uploadSelectedImage() {
     throw new Error(data.detail || "이미지 업로드 실패");
   }
 
-  const data = await response.json();
-  return {
-    imageUri: data.image_uri || null,
-    previewUrl: data.preview_url || toPreviewSrc(data.image_uri || ""),
-    fileName: file.name,
-  };
+  return response.json();
+}
+
+async function readNdjsonStream(response) {
+  if (!response.body) {
+    throw new Error("stream body is missing");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalData = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
+      }
+      const event = JSON.parse(line);
+      if (event.type === "status") {
+        appendStatus(event);
+      } else if (event.type === "final") {
+        finalData = event.data;
+      }
+    }
+  }
+
+  return finalData;
 }
 
 chatForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const question = questionInput.value.trim();
-  const hasImageUri = !!imageUriInput.value.trim();
   const hasImageFile = !!imageFileInput?.files?.length;
-  if (!question && !hasImageUri && !hasImageFile) {
-    appendMessage("bot", "질문 또는 이미지를 입력해 주세요.");
+
+  if (!question && !hasImageFile) {
+    appendTextMessage("bot", "질문 또는 이미지를 입력해 주세요.");
     return;
   }
 
-  const payload = { question, top_k: 3 };
-
-  const ops = opsInput.value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (ops.length > 0) {
-    payload.ops = ops;
-  }
-
   try {
-    let imageUri = imageUriInput.value.trim();
-    let previewSrc = toPreviewSrc(imageUri);
+    let imageUri = "";
 
-    // Always upload when a file is selected, so image_uri updates automatically.
     if (hasImageFile) {
       const uploaded = await uploadSelectedImage();
-      imageUri = uploaded.imageUri || imageUri;
-      previewSrc = uploaded.previewUrl || toPreviewSrc(imageUri);
-      if (imageUri) {
-        imageUriInput.value = imageUri;
+      imageUri = uploaded.image_uri || "";
+      const previewUrl = uploaded.preview_url || "";
+      if (previewUrl) {
+        appendImageMessage("user", previewUrl, imageFileInput.files[0]?.name || "uploaded image");
       }
-      if (imageFileInput) {
-        imageFileInput.value = "";
-      }
-      appendImageMessage("user", previewSrc, uploaded.fileName || "uploaded image");
-    } else if (imageUri) {
-      appendImageMessage("user", previewSrc, "image uri");
+      imageFileInput.value = "";
     }
 
+    appendTextMessage("user", question || "(질문 없음, 이미지 분석 요청)");
+    questionInput.value = "";
+
+    const payload = { question, top_k: 3 };
     if (imageUri) {
       payload.image_uri = imageUri;
     }
 
-    appendMessage("user", question || "(질문 없음, 이미지 분석 요청)");
-    questionInput.value = "";
-
-    const response = await fetch("/chat", {
+    const response = await fetch("/chat/stream", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -139,18 +233,18 @@ chatForm?.addEventListener("submit", async (event) => {
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      appendMessage("bot", `요청 실패: ${data.detail || response.status}`);
+      appendTextMessage("bot", `요청 실패: ${data.detail || response.status}`);
       return;
     }
 
-    const data = await response.json();
-    const citationCount = data.citations?.length || 0;
-    const analysisSummary = data.analysis?.invoked
-      ? `\n[analysis] ${JSON.stringify(data.analysis.ops || [])}`
-      : "";
-    appendMessage("bot", `${data.answer}\n[citations] ${citationCount}${analysisSummary}`);
+    const finalData = await readNdjsonStream(response);
+    if (finalData) {
+      appendStructuredResponse(finalData);
+    } else {
+      appendTextMessage("bot", "스트리밍 응답이 비어 있습니다.");
+    }
   } catch (error) {
-    appendMessage("bot", `서버 연결 실패 또는 업로드 실패: ${error.message || "unknown"}`);
+    appendTextMessage("bot", `요청 실패: ${error.message || "unknown error"}`);
   }
 });
 

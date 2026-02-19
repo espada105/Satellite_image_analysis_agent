@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 
 import httpx
 
@@ -11,9 +12,84 @@ SYSTEM_PROMPT = (
     "If they are insufficient, still answer the user's general question safely and concisely."
 )
 
+ROUTER_PROMPT = (
+    "Decide tool usage for a satellite assistant. Return ONLY JSON with keys "
+    "use_rag (bool), use_mcp (bool), reason (string). "
+    "Rules: use_mcp requires image_available=true. "
+    "If question asks knowledge/explanation/document-backed info, use_rag=true. "
+    "If question is visual analysis and image is available, use_mcp=true."
+)
+
+
+@dataclass(frozen=True)
+class ToolDecision:
+    use_rag: bool
+    use_mcp: bool
+    reason: str = ""
+    error: str | None = None
+
 
 def llm_enabled() -> bool:
     return bool(settings.llm_api_key and settings.llm_model)
+
+
+async def decide_tool_usage(
+    question: str,
+    image_available: bool,
+    timeout_s: float = 12.0,
+) -> ToolDecision:
+    fallback = ToolDecision(
+        use_rag=bool(question.strip()),
+        use_mcp=image_available,
+        reason="rule_fallback",
+    )
+    if not llm_enabled():
+        return ToolDecision(
+            use_rag=fallback.use_rag,
+            use_mcp=fallback.use_mcp,
+            reason=fallback.reason,
+            error="llm_not_configured",
+        )
+
+    router_input = {
+        "question": question,
+        "image_available": image_available,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {settings.llm_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response_text = await _request_text_with_responses_or_chat(
+                client=client,
+                headers=headers,
+                system_prompt=ROUTER_PROMPT,
+                user_payload=router_input,
+            )
+    except Exception as exc:  # noqa: BLE001
+        return ToolDecision(
+            use_rag=fallback.use_rag,
+            use_mcp=fallback.use_mcp,
+            reason=fallback.reason,
+            error=str(exc),
+        )
+
+    parsed = _extract_json_object(response_text or "")
+    if not parsed:
+        return ToolDecision(
+            use_rag=fallback.use_rag,
+            use_mcp=fallback.use_mcp,
+            reason=fallback.reason,
+            error="router_parse_failed",
+        )
+
+    use_rag = bool(parsed.get("use_rag", fallback.use_rag))
+    use_mcp = bool(parsed.get("use_mcp", fallback.use_mcp)) and image_available
+    reason = str(parsed.get("reason", "llm_router"))
+    return ToolDecision(use_rag=use_rag, use_mcp=use_mcp, reason=reason)
 
 
 async def generate_answer_with_llm(
@@ -39,30 +115,6 @@ async def generate_answer_with_llm(
         "analysis": analysis.model_dump(),
     }
 
-    responses_body = {
-        "model": settings.llm_model,
-        "input": [
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": SYSTEM_PROMPT,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(context, ensure_ascii=False),
-                    }
-                ],
-            },
-        ],
-    }
-
     headers = {
         "Authorization": f"Bearer {settings.llm_api_key}",
         "Content-Type": "application/json",
@@ -70,31 +122,58 @@ async def generate_answer_with_llm(
 
     try:
         async with httpx.AsyncClient(timeout=timeout_s) as client:
-            responses_url = f"{settings.llm_base_url.rstrip('/')}/responses"
-            response = await client.post(responses_url, headers=headers, json=responses_body)
-            if response.is_success:
-                parsed = _parse_responses_output(response.json())
-                if parsed:
-                    return parsed, None
-
-            # Fallback for compatibility with providers/configs expecting chat completions.
-            chat_body = {
-                "model": settings.llm_model,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
-                ],
-            }
-            chat_url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
-            chat_response = await client.post(chat_url, headers=headers, json=chat_body)
-            chat_response.raise_for_status()
-            parsed_chat = _parse_chat_completions_output(chat_response.json())
-            if parsed_chat:
-                return parsed_chat, None
+            response_text = await _request_text_with_responses_or_chat(
+                client=client,
+                headers=headers,
+                system_prompt=SYSTEM_PROMPT,
+                user_payload=context,
+            )
+            if response_text and response_text.strip():
+                return response_text.strip(), None
     except Exception as exc:  # noqa: BLE001
         return None, str(exc)
 
     return None, "empty_llm_output"
+
+
+async def _request_text_with_responses_or_chat(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    system_prompt: str,
+    user_payload: dict,
+) -> str | None:
+    responses_body = {
+        "model": settings.llm_model,
+        "input": [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": system_prompt}],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": json.dumps(user_payload, ensure_ascii=False)}],
+            },
+        ],
+    }
+
+    responses_url = f"{settings.llm_base_url.rstrip('/')}/responses"
+    response = await client.post(responses_url, headers=headers, json=responses_body)
+    if response.is_success:
+        parsed = _parse_responses_output(response.json())
+        if parsed:
+            return parsed
+
+    chat_body = {
+        "model": settings.llm_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+        ],
+    }
+    chat_url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
+    chat_response = await client.post(chat_url, headers=headers, json=chat_body)
+    chat_response.raise_for_status()
+    return _parse_chat_completions_output(chat_response.json())
 
 
 def _parse_responses_output(data: dict) -> str | None:
@@ -119,4 +198,32 @@ def _parse_chat_completions_output(data: dict) -> str | None:
     text = message.get("content")
     if isinstance(text, str) and text.strip():
         return text.strip()
+    return None
+
+
+def _extract_json_object(raw_text: str) -> dict | None:
+    raw_text = raw_text.strip()
+    if not raw_text:
+        return None
+
+    try:
+        parsed = json.loads(raw_text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    start = raw_text.find("{")
+    end = raw_text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+
+    candidate = raw_text[start : end + 1]
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        return None
+
     return None

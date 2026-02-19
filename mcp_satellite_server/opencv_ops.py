@@ -6,7 +6,7 @@ import numpy as np
 
 from mcp_satellite_server.schemas import OpResult
 
-SUPPORTED_OPS = {"edges", "threshold", "morphology", "cloud_mask_like"}
+SUPPORTED_OPS = {"edges", "threshold", "morphology", "cloud_mask_like", "masking_like"}
 
 
 def analyze_satellite_image(
@@ -72,6 +72,19 @@ def analyze_satellite_image(
                     name=op,
                     summary=f"Estimated cloud-like coverage is {cloud_ratio:.2%}",
                     stats={"cloud_like_ratio": round(cloud_ratio, 6)},
+                )
+            )
+        elif op == "masking_like":
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            lower = np.array([25, 30, 30])
+            upper = np.array([95, 255, 255])
+            mask = cv2.inRange(hsv, lower, upper)
+            mask_ratio = float(np.count_nonzero(mask)) / float(mask.size)
+            op_results.append(
+                OpResult(
+                    name=op,
+                    summary=f"Simple color-mask coverage is {mask_ratio:.2%}",
+                    stats={"mask_ratio": round(mask_ratio, 6)},
                 )
             )
 

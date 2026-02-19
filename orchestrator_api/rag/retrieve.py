@@ -3,13 +3,17 @@ from orchestrator_api.rag.store import store
 from orchestrator_api.schemas import Citation
 
 
-def retrieve_citations(query: str, top_k: int = 3) -> list[Citation]:
+def retrieve_citations(
+    query: str,
+    top_k: int = 3,
+    min_score: float = 0.0,
+) -> list[Citation]:
     query_embedding = embed_text(query)
     results = store.search(query_embedding, top_k=top_k)
 
     citations: list[Citation] = []
     for chunk, score in results:
-        if score <= 0:
+        if score <= 0 or score < min_score:
             continue
         citations.append(
             Citation(

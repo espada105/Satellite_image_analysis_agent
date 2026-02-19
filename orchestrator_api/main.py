@@ -1,15 +1,16 @@
+import json
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from orchestrator_api.config import settings
 from orchestrator_api.rag.ingest import ingest_documents
 from orchestrator_api.schemas import ChatRequest, ChatResponse, IngestRequest, IngestResponse
 from orchestrator_api.security import require_verified_user
-from orchestrator_api.services.chat_service import run_chat
+from orchestrator_api.services.chat_service import run_chat, run_chat_stream
 
 app = FastAPI(title="Satellite Orchestrator API", version="0.1.0")
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -85,3 +86,15 @@ async def chat(
     _: str | None = Depends(require_verified_user),
 ) -> ChatResponse:
     return await run_chat(request)
+
+
+@app.post("/chat/stream")
+async def chat_stream(
+    request: ChatRequest,
+    _: str | None = Depends(require_verified_user),
+) -> StreamingResponse:
+    async def event_generator():
+        async for event in run_chat_stream(request):
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
