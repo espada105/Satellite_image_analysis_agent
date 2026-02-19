@@ -8,6 +8,7 @@ orchestrator_api/
   schemas.py
   config.py
   router.py
+  security.py
   mcp_client.py
   services/
     chat_service.py
@@ -27,6 +28,7 @@ data/
   docs/
   imagery/
 tests/
+  test_auth.py
   test_chat.py
   test_ingest.py
   test_router.py
@@ -47,6 +49,23 @@ uv venv
 uv sync --extra dev
 ```
 
+## Access control (verified IDs)
+
+When `VERIFIED_USER_IDS` is configured, `/ingest` and `/chat` require `x-user-id` header.
+
+```bash
+export VERIFIED_USER_IDS="alice,bob"
+```
+
+Request example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: alice" \
+  -d '{"question":"구름 영향 알려줘"}'
+```
+
 ## Run commands
 
 ```bash
@@ -56,6 +75,10 @@ uv run uvicorn orchestrator_api.main:app --host 0.0.0.0 --port 8000 --reload
 # MCP server (separate terminal)
 uv run uvicorn mcp_satellite_server.server:app --host 0.0.0.0 --port 8100 --reload
 ```
+
+Web UI:
+- Login page: `http://127.0.0.1:8000/`
+- Chatbot page: `http://127.0.0.1:8000/chatbot`
 
 ## Test commands
 
