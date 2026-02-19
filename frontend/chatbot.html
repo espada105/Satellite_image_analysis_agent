@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Satellite Chatbot</title>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body class="space-page">
+    <div class="stars"></div>
+    <div class="stars stars-2"></div>
+
+    <main class="chat-wrap">
+      <header class="chat-head">
+        <h1>Satellite Chatbot</h1>
+        <button id="logoutBtn" class="ghost-btn">Logout</button>
+      </header>
+
+      <section id="chatLog" class="chat-log"></section>
+
+      <form id="chatForm" class="chat-form">
+        <input id="question" type="text" placeholder="질문을 입력하세요" required />
+        <input id="imageUri" type="text" placeholder="image uri (optional)" />
+        <input id="ops" type="text" placeholder="ops ex) edges,cloud_mask_like" />
+        <button type="submit">Send</button>
+      </form>
+    </main>
+
+    <script src="/static/js/chatbot.js"></script>
+  </body>
+</html>
