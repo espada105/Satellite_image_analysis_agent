@@ -1,5 +1,6 @@
 import time
 
+from orchestrator_api.llm import generate_answer_with_llm
 from orchestrator_api.mcp_client import analyze_image
 from orchestrator_api.rag.retrieve import retrieve_citations
 from orchestrator_api.router import should_invoke_mcp
@@ -18,7 +19,13 @@ async def run_chat(request: ChatRequest) -> ChatResponse:
         ops = request.ops or ["edges", "cloud_mask_like"]
         analysis = await analyze_image(request.image_uri or "", ops=ops, roi=request.roi)
 
-    answer = _compose_answer(request.question, citations, analysis)
+    answer, llm_error = await generate_answer_with_llm(request.question, citations, analysis)
+    if answer:
+        tools_used.append("llm.generate")
+    else:
+        if llm_error:
+            tools_used.append(f"llm.fallback:{llm_error}")
+        answer = _compose_answer(request.question, citations, analysis)
     latency_ms = int((time.perf_counter() - start) * 1000)
     trace = TraceInfo(tools=tools_used, latency_ms=latency_ms)
 

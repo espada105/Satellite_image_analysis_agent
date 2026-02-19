@@ -19,8 +19,9 @@
       <section id="chatLog" class="chat-log"></section>
 
       <form id="chatForm" class="chat-form">
-        <input id="question" type="text" placeholder="질문을 입력하세요" required />
+        <input id="question" type="text" placeholder="질문(선택)" />
         <input id="imageUri" type="text" placeholder="image uri (optional)" />
+        <input id="imageFile" type="file" accept="image/*" />
         <input id="ops" type="text" placeholder="ops ex) edges,cloud_mask_like" />
         <button type="submit">Send</button>
       </form>

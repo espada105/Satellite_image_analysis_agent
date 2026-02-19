@@ -16,12 +16,8 @@ MCP_KEYWORDS = (
 
 
 def should_invoke_mcp(question: str, image_uri: str | None) -> bool:
-    if not image_uri:
-        return False
-
-    normalized = question.lower()
-    if any(keyword in question for keyword in MCP_KEYWORDS):
-        return True
-    if any(keyword in normalized for keyword in MCP_KEYWORDS):
+    _ = question  # reserved for future rule tuning
+    # If image exists, run analysis by default.
+    if image_uri:
         return True
     return False

@@ -10,6 +10,7 @@ from orchestrator_api.rag.store import store
 
 
 def test_chat_with_mcp_flow(tmp_path: Path, monkeypatch) -> None:
+    headers = {"x-user-id": "alice"}
     store.clear()
 
     doc_path = tmp_path / "manual.txt"
@@ -50,7 +51,11 @@ def test_chat_with_mcp_flow(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("orchestrator_api.services.chat_service.analyze_image", _fake_analyze_image)
 
     client = TestClient(orchestrator_app)
-    client.post("/ingest", json={"documents": [str(doc_path)]})
+    client.post(
+        "/ingest",
+        json={"documents": [str(doc_path)]},
+        headers=headers,
+    )
 
     chat_resp = client.post(
         "/chat",
@@ -59,6 +64,7 @@ def test_chat_with_mcp_flow(tmp_path: Path, monkeypatch) -> None:
             "image_uri": str(image_path),
             "ops": ["edges"],
         },
+        headers=headers,
     )
 
     assert chat_resp.status_code == 200

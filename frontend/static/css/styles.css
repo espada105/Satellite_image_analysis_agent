@@ -157,6 +157,21 @@ button {
   white-space: pre-wrap;
 }
 
+.chat-image {
+  display: block;
+  width: min(320px, 68vw);
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.chat-image-caption {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
 .msg.user {
   justify-self: end;
   max-width: 76%;

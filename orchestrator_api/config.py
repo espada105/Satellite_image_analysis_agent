@@ -1,11 +1,18 @@
 import os
 from dataclasses import dataclass
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 @dataclass(frozen=True)
 class Settings:
     mcp_base_url: str = os.getenv("MCP_BASE_URL", "http://127.0.0.1:8100")
     rag_index_name: str = os.getenv("RAG_INDEX_NAME", "default")
+    llm_api_key: str = os.getenv("LLM_API_KEY", "")
+    llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    llm_base_url: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
 
 
 settings = Settings()

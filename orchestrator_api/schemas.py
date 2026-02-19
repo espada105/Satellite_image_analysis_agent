@@ -27,7 +27,7 @@ class TraceInfo(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    question: str
+    question: str = ""
     image_uri: str | None = None
     roi: dict | None = None
     top_k: int = 3

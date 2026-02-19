@@ -1,6 +1,7 @@
 from pathlib import Path
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -14,8 +15,12 @@ app = FastAPI(title="Satellite Orchestrator API", version="0.1.0")
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "frontend"
 STATIC_DIR = FRONTEND_DIR / "static"
+IMAGERY_DIR = ROOT_DIR / "data" / "imagery"
+UPLOADS_DIR = IMAGERY_DIR / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/imagery", StaticFiles(directory=IMAGERY_DIR), name="imagery")
 
 
 @app.get("/health")
@@ -36,6 +41,29 @@ def chatbot_page() -> FileResponse:
 @app.get("/auth/verify")
 def auth_verify(_: str | None = Depends(require_verified_user)) -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    _: str | None = Depends(require_verified_user),
+) -> dict[str, str]:
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image uploads are allowed")
+
+    suffix = Path(file.filename or "").suffix.lower() or ".png"
+    if suffix not in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".bmp", ".gif"}:
+        raise HTTPException(status_code=400, detail="Unsupported image extension")
+
+    filename = f"{uuid4().hex}{suffix}"
+    destination = UPLOADS_DIR / filename
+
+    content = await file.read()
+    destination.write_bytes(content)
+    relative_uri = f"data/imagery/uploads/{filename}"
+
+    preview_url = f"/imagery/uploads/{filename}"
+    return {"image_uri": relative_uri, "preview_url": preview_url}
 
 
 @app.post("/ingest", response_model=IngestResponse)
