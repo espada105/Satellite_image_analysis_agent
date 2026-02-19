@@ -8,6 +8,7 @@ const chatForm = document.getElementById("chatForm");
 const questionInput = document.getElementById("question");
 const imageFileInput = document.getElementById("imageFile");
 const logoutBtn = document.getElementById("logoutBtn");
+let typingBubble = null;
 
 function appendTextMessage(role, text) {
   const div = document.createElement("div");
@@ -102,6 +103,33 @@ function appendStructuredResponse(data) {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
+function startTypingBubble() {
+  if (typingBubble) {
+    return;
+  }
+  typingBubble = document.createElement("div");
+  typingBubble.className = "msg bot typing";
+  typingBubble.textContent = "";
+  chatLog.appendChild(typingBubble);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function appendTypingChunk(text) {
+  if (!typingBubble) {
+    startTypingBubble();
+  }
+  typingBubble.textContent += text;
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function endTypingBubble() {
+  if (!typingBubble) {
+    return;
+  }
+  typingBubble.remove();
+  typingBubble = null;
+}
+
 function appendStatus(event) {
   if (event.stage === "llm") {
     appendTextMessage("bot", "[stream] LLM 답변 생성 중...");
@@ -182,6 +210,10 @@ async function readNdjsonStream(response) {
       const event = JSON.parse(line);
       if (event.type === "status") {
         appendStatus(event);
+      } else if (event.type === "answer_start") {
+        startTypingBubble();
+      } else if (event.type === "answer_chunk") {
+        appendTypingChunk(event.text || "");
       } else if (event.type === "final") {
         finalData = event.data;
       }
@@ -238,6 +270,7 @@ chatForm?.addEventListener("submit", async (event) => {
     }
 
     const finalData = await readNdjsonStream(response);
+    endTypingBubble();
     if (finalData) {
       appendStructuredResponse(finalData);
     } else {

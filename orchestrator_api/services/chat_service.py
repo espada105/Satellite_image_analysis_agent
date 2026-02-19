@@ -97,6 +97,10 @@ async def _run_pipeline(request: ChatRequest) -> tuple[ChatResponse, list[dict]]
             tools_used.append(f"llm.fallback:{llm_error}")
         answer = _compose_answer(request.question, citations, analysis)
 
+    events.append({"type": "answer_start"})
+    for chunk in _chunk_text(answer, size=24):
+        events.append({"type": "answer_chunk", "text": chunk})
+
     latency_ms = int((time.perf_counter() - start) * 1000)
     trace = TraceInfo(tools=tools_used, latency_ms=latency_ms)
 
@@ -122,3 +126,9 @@ def _compose_answer(question: str, citations: list, analysis: AnalysisResult) ->
         parts.append("영상 분석 미실행")
 
     return " ".join(parts)
+
+
+def _chunk_text(text: str, size: int = 24) -> list[str]:
+    if not text:
+        return []
+    return [text[i : i + size] for i in range(0, len(text), size)]

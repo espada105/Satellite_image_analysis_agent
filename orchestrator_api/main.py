@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from orchestrator_api.config import settings
 from orchestrator_api.rag.ingest import ingest_documents
+from orchestrator_api.rag.store import store
 from orchestrator_api.schemas import ChatRequest, ChatResponse, IngestRequest, IngestResponse
 from orchestrator_api.security import require_verified_user
 from orchestrator_api.services.chat_service import run_chat, run_chat_stream
@@ -17,11 +18,29 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "frontend"
 STATIC_DIR = FRONTEND_DIR / "static"
 IMAGERY_DIR = ROOT_DIR / "data" / "imagery"
+DOCS_DIR = ROOT_DIR / "data" / "docs"
 UPLOADS_DIR = IMAGERY_DIR / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/imagery", StaticFiles(directory=IMAGERY_DIR), name="imagery")
+
+
+@app.on_event("startup")
+def startup_ingest_docs() -> None:
+    if not DOCS_DIR.exists():
+        return
+
+    docs = sorted(
+        str(path)
+        for path in DOCS_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() in {".md", ".txt", ".pdf", ".html", ".htm"}
+    )
+    if not docs:
+        return
+
+    store.clear()
+    ingest_documents(docs)
 
 
 @app.get("/health")
