@@ -9,3 +9,8 @@ class Settings:
 
 
 settings = Settings()
+
+
+def get_verified_user_ids() -> set[str]:
+    raw = os.getenv("VERIFIED_USER_IDS", "")
+    return {user_id.strip() for user_id in raw.split(",") if user_id.strip()}
