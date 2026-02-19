@@ -18,3 +18,6 @@ def test_ingest_and_retrieve(tmp_path: Path) -> None:
     cites = retrieve_citations("cloud change", top_k=3)
     assert len(cites) >= 1
     assert "cloud" in cites[0].snippet.lower() or "change" in cites[0].snippet.lower()
+    assert cites[0].line_start is not None
+    assert cites[0].line_end is not None
+    assert ":" in cites[0].chunk_id and "-" in cites[0].chunk_id

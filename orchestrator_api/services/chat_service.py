@@ -2,29 +2,15 @@ import time
 from collections.abc import AsyncGenerator
 
 from orchestrator_api.config import settings
-from orchestrator_api.llm import decide_tool_usage, generate_answer_with_llm
+from orchestrator_api.llm import decide_tool_usage, generate_answer_with_llm, stream_answer_with_llm
 from orchestrator_api.mcp_client import analyze_image
 from orchestrator_api.rag.retrieve import retrieve_citations
 from orchestrator_api.schemas import AnalysisResult, ChatRequest, ChatResponse, TraceInfo
 
 
 async def run_chat(request: ChatRequest) -> ChatResponse:
-    response, _ = await _run_pipeline(request)
-    return response
-
-
-async def run_chat_stream(request: ChatRequest) -> AsyncGenerator[dict, None]:
-    response, events = await _run_pipeline(request)
-    for event in events:
-        yield event
-    yield {"type": "final", "data": response.model_dump()}
-
-
-async def _run_pipeline(request: ChatRequest) -> tuple[ChatResponse, list[dict]]:
     start = time.perf_counter()
-    events: list[dict] = []
 
-    events.append({"type": "status", "stage": "route", "message": "deciding tool usage"})
     decision = await decide_tool_usage(
         question=request.question,
         image_available=bool(request.image_uri),
@@ -39,48 +25,11 @@ async def _run_pipeline(request: ChatRequest) -> tuple[ChatResponse, list[dict]]
     if decision.error:
         tools_used.append(f"route.error:{decision.error}")
 
-    citations = []
-    rag_active = decision.use_rag
-    rag_relaxed = False
-    if rag_active and request.question.strip():
+    citations, rag_relaxed, rag_active = _run_rag(request, decision.use_rag, decision.use_mcp)
+    if rag_active:
         tools_used.append("rag.retrieve")
-        citations = retrieve_citations(
-            request.question,
-            top_k=request.top_k,
-            min_score=settings.rag_min_score,
-        )
-        if not citations:
-            tools_used.append("rag.retrieve.relaxed")
-            rag_relaxed = True
-            citations = retrieve_citations(
-                request.question,
-                top_k=request.top_k,
-                min_score=0.0,
-            )
-
-    if not decision.use_rag and not decision.use_mcp and request.question.strip():
-        tools_used.append("route.override:rag_probe")
-        citations = retrieve_citations(
-            request.question,
-            top_k=request.top_k,
-            min_score=settings.rag_min_score,
-        )
-        if citations:
-            rag_active = True
-            tools_used.append("rag.retrieve.probe_hit")
-        else:
-            tools_used.append("rag.retrieve.probe_miss")
-
-    events.append(
-        {
-            "type": "status",
-            "stage": "rag",
-            "used": rag_active,
-            "hits": len(citations),
-            "min_score": settings.rag_min_score,
-            "relaxed": rag_relaxed,
-        }
-    )
+    if rag_relaxed:
+        tools_used.append("rag.retrieve.relaxed")
 
     analysis = AnalysisResult(invoked=False)
     if decision.use_mcp and request.image_uri:
@@ -88,17 +37,6 @@ async def _run_pipeline(request: ChatRequest) -> tuple[ChatResponse, list[dict]]
         ops = request.ops or ["edges", "cloud_mask_like", "masking_like"]
         analysis = await analyze_image(request.image_uri, ops=ops, roi=request.roi)
 
-    events.append(
-        {
-            "type": "status",
-            "stage": "mcp",
-            "invoked": analysis.invoked,
-            "ops": [op.name for op in analysis.ops],
-            "error": analysis.error,
-        }
-    )
-
-    events.append({"type": "status", "stage": "llm", "message": "generating answer"})
     answer, llm_error = await generate_answer_with_llm(request.question, citations, analysis)
     if answer:
         tools_used.append("llm.generate")
@@ -107,15 +45,126 @@ async def _run_pipeline(request: ChatRequest) -> tuple[ChatResponse, list[dict]]
             tools_used.append(f"llm.fallback:{llm_error}")
         answer = _compose_answer(request.question, citations, analysis)
 
-    events.append({"type": "answer_start"})
-    for chunk in _chunk_text(answer, size=24):
-        events.append({"type": "answer_chunk", "text": chunk})
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    trace = TraceInfo(tools=tools_used, latency_ms=latency_ms)
+    return ChatResponse(answer=answer, citations=citations, analysis=analysis, trace=trace)
+
+
+async def run_chat_stream(request: ChatRequest) -> AsyncGenerator[dict, None]:
+    start = time.perf_counter()
+
+    yield {"type": "status", "stage": "route", "message": "deciding tool usage"}
+    decision = await decide_tool_usage(
+        question=request.question,
+        image_available=bool(request.image_uri),
+    )
+
+    tools_used = [
+        "router.decision",
+        f"route.rag:{str(decision.use_rag).lower()}",
+        f"route.mcp:{str(decision.use_mcp).lower()}",
+        f"route.reason:{decision.reason}",
+    ]
+    if decision.error:
+        tools_used.append(f"route.error:{decision.error}")
+
+    citations, rag_relaxed, rag_active = _run_rag(request, decision.use_rag, decision.use_mcp)
+    if rag_active:
+        tools_used.append("rag.retrieve")
+    if rag_relaxed:
+        tools_used.append("rag.retrieve.relaxed")
+
+    yield {
+        "type": "status",
+        "stage": "rag",
+        "used": rag_active,
+        "hits": len(citations),
+        "min_score": settings.rag_min_score,
+        "relaxed": rag_relaxed,
+    }
+
+    analysis = AnalysisResult(invoked=False)
+    if decision.use_mcp and request.image_uri:
+        tools_used.append("mcp.analyze_satellite_image")
+        ops = request.ops or ["edges", "cloud_mask_like", "masking_like"]
+        analysis = await analyze_image(request.image_uri, ops=ops, roi=request.roi)
+
+    yield {
+        "type": "status",
+        "stage": "mcp",
+        "invoked": analysis.invoked,
+        "ops": [op.name for op in analysis.ops],
+        "error": analysis.error,
+    }
+
+    yield {"type": "status", "stage": "llm", "message": "generating answer"}
+
+    answer_parts: list[str] = []
+    streamed = False
+    async for token in stream_answer_with_llm(request.question, citations, analysis):
+        if not streamed:
+            streamed = True
+            tools_used.append("llm.generate.stream")
+            yield {"type": "answer_start"}
+        answer_parts.append(token)
+        yield {"type": "answer_chunk", "text": token}
+
+    if streamed:
+        answer = "".join(answer_parts)
+    else:
+        answer, llm_error = await generate_answer_with_llm(request.question, citations, analysis)
+        if answer:
+            tools_used.append("llm.generate")
+            yield {"type": "answer_start"}
+            for chunk in _chunk_text(answer, size=24):
+                yield {"type": "answer_chunk", "text": chunk}
+        else:
+            if llm_error:
+                tools_used.append(f"llm.fallback:{llm_error}")
+            answer = _compose_answer(request.question, citations, analysis)
+            yield {"type": "answer_start"}
+            for chunk in _chunk_text(answer, size=24):
+                yield {"type": "answer_chunk", "text": chunk}
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     trace = TraceInfo(tools=tools_used, latency_ms=latency_ms)
-
     response = ChatResponse(answer=answer, citations=citations, analysis=analysis, trace=trace)
-    return response, events
+    yield {"type": "final", "data": response.model_dump()}
+
+
+def _run_rag(
+    request: ChatRequest,
+    decision_use_rag: bool,
+    decision_use_mcp: bool,
+) -> tuple[list, bool, bool]:
+    citations = []
+    rag_active = decision_use_rag
+    rag_relaxed = False
+
+    if rag_active and request.question.strip():
+        citations = retrieve_citations(
+            request.question,
+            top_k=request.top_k,
+            min_score=settings.rag_min_score,
+        )
+        if not citations:
+            rag_relaxed = True
+            citations = retrieve_citations(
+                request.question,
+                top_k=request.top_k,
+                min_score=0.0,
+            )
+
+    if not decision_use_rag and not decision_use_mcp and request.question.strip():
+        citations = retrieve_citations(
+            request.question,
+            top_k=request.top_k,
+            min_score=settings.rag_min_score,
+        )
+        if citations:
+            rag_active = True
+
+    return citations, rag_relaxed, rag_active
 
 
 def _compose_answer(question: str, citations: list, analysis: AnalysisResult) -> str:

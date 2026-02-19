@@ -16,6 +16,8 @@ class ChunkRecord:
     doc_id: str
     chunk_id: str
     text: str
+    line_start: int
+    line_end: int
 
 
 class SparseVectorStore:

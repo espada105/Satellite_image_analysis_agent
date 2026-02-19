@@ -1,4 +1,5 @@
 import json
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 import httpx
@@ -134,6 +135,69 @@ async def generate_answer_with_llm(
         return None, str(exc)
 
     return None, "empty_llm_output"
+
+
+async def stream_answer_with_llm(
+    question: str,
+    citations: list[Citation],
+    analysis: AnalysisResult,
+    timeout_s: float = 60.0,
+) -> AsyncGenerator[str, None]:
+    if not llm_enabled():
+        return
+
+    context = {
+        "question": question,
+        "citations": [
+            {
+                "doc_id": c.doc_id,
+                "chunk_id": c.chunk_id,
+                "snippet": c.snippet,
+                "score": c.score,
+            }
+            for c in citations
+        ],
+        "analysis": analysis.model_dump(),
+    }
+
+    headers = {
+        "Authorization": f"Bearer {settings.llm_api_key}",
+        "Content-Type": "application/json",
+    }
+    chat_body = {
+        "model": settings.llm_model,
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
+        ],
+    }
+    chat_url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            async with client.stream("POST", chat_url, headers=headers, json=chat_body) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = data.get("choices", [])
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta", {}).get("content")
+                    if isinstance(delta, str) and delta:
+                        yield delta
+    except Exception:  # noqa: BLE001
+        return
 
 
 async def _request_text_with_responses_or_chat(

@@ -16,12 +16,15 @@ def ingest_documents(
             doc_id, text = parse_document(doc_input)
             chunks = chunk_text(text, chunk_size=chunk_size, overlap=overlap)
             records: list[ChunkRecord] = []
-            for i, chunk in enumerate(chunks):
+            for chunk in chunks:
+                chunk_id = f"{doc_id}:{chunk.line_start}-{chunk.line_end}"
                 records.append(
                     ChunkRecord(
                         doc_id=doc_id,
-                        chunk_id=f"{doc_id}:{i}",
-                        text=chunk,
+                        chunk_id=chunk_id,
+                        text=chunk.text,
+                        line_start=chunk.line_start,
+                        line_end=chunk.line_end,
                     )
                 )
             store.add(records)

@@ -70,7 +70,11 @@ function appendStructuredResponse(data) {
     ul.className = "resp-list";
     data.citations.forEach((item) => {
       const li = document.createElement("li");
-      li.textContent = `${item.doc_id} | ${item.chunk_id} | score=${item.score}`;
+      const lineInfo =
+        item.line_start && item.line_end
+          ? `lines ${item.line_start}-${item.line_end}`
+          : item.chunk_id;
+      li.textContent = `${item.doc_id} | ${lineInfo} | score=${item.score}`;
       ul.appendChild(li);
     });
     rag.appendChild(ul);

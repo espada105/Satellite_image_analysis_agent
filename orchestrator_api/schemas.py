@@ -6,6 +6,8 @@ class Citation(BaseModel):
     chunk_id: str
     snippet: str
     score: float
+    line_start: int | None = None
+    line_end: int | None = None
 
 
 class AnalysisOpSummary(BaseModel):
