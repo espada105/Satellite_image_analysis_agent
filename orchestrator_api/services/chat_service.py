@@ -41,6 +41,7 @@ async def _run_pipeline(request: ChatRequest) -> tuple[ChatResponse, list[dict]]
 
     citations = []
     rag_active = decision.use_rag
+    rag_relaxed = False
     if rag_active and request.question.strip():
         tools_used.append("rag.retrieve")
         citations = retrieve_citations(
@@ -48,6 +49,14 @@ async def _run_pipeline(request: ChatRequest) -> tuple[ChatResponse, list[dict]]
             top_k=request.top_k,
             min_score=settings.rag_min_score,
         )
+        if not citations:
+            tools_used.append("rag.retrieve.relaxed")
+            rag_relaxed = True
+            citations = retrieve_citations(
+                request.question,
+                top_k=request.top_k,
+                min_score=0.0,
+            )
 
     if not decision.use_rag and not decision.use_mcp and request.question.strip():
         tools_used.append("route.override:rag_probe")
@@ -69,6 +78,7 @@ async def _run_pipeline(request: ChatRequest) -> tuple[ChatResponse, list[dict]]
             "used": rag_active,
             "hits": len(citations),
             "min_score": settings.rag_min_score,
+            "relaxed": rag_relaxed,
         }
     )
 

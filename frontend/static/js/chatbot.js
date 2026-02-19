@@ -138,7 +138,7 @@ function appendStatus(event) {
   if (event.stage === "rag") {
     appendTextMessage(
       "bot",
-      `[stream] RAG used=${event.used} hits=${event.hits} min_score=${event.min_score}`,
+      `[stream] RAG used=${event.used} hits=${event.hits} min_score=${event.min_score} relaxed=${event.relaxed || false}`,
     );
     return;
   }
