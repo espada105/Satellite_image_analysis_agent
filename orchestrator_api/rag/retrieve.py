@@ -1,4 +1,3 @@
-from orchestrator_api.rag.embedder import embed_text
 from orchestrator_api.rag.store import store
 from orchestrator_api.schemas import Citation
 
@@ -8,13 +7,10 @@ def retrieve_citations(
     top_k: int = 3,
     min_score: float = 0.0,
 ) -> list[Citation]:
-    query_embedding = embed_text(query)
-    results = store.search(query_embedding, top_k=top_k)
+    results = store.search(query=query, top_k=top_k, min_score=min_score)
 
     citations: list[Citation] = []
     for chunk, score in results:
-        if score <= 0 or score < min_score:
-            continue
         citations.append(
             Citation(
                 doc_id=chunk.doc_id,

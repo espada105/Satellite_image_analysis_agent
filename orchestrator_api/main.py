@@ -99,6 +99,31 @@ def ingest(
     return IngestResponse(ingested_count=ingested_count, failed=failed)
 
 
+@app.post("/reindex-docs")
+def reindex_docs(_: str | None = Depends(require_verified_user)) -> dict:
+    if not DOCS_DIR.exists():
+        return {
+            "ingested_count": 0,
+            "failed": [],
+            "store_count": store.count(),
+            "backend": store.backend_info(),
+        }
+
+    docs = sorted(
+        str(path)
+        for path in DOCS_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() in {".md", ".txt", ".pdf", ".html", ".htm"}
+    )
+    store.clear()
+    ingested_count, failed = ingest_documents(docs)
+    return {
+        "ingested_count": ingested_count,
+        "failed": failed,
+        "store_count": store.count(),
+        "backend": store.backend_info(),
+    }
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,

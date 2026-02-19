@@ -1,5 +1,4 @@
 from orchestrator_api.rag.chunker import chunk_text
-from orchestrator_api.rag.embedder import embed_text
 from orchestrator_api.rag.parser import parse_document
 from orchestrator_api.rag.store import ChunkRecord, store
 
@@ -23,7 +22,6 @@ def ingest_documents(
                         doc_id=doc_id,
                         chunk_id=f"{doc_id}:{i}",
                         text=chunk,
-                        embedding=embed_text(chunk),
                     )
                 )
             store.add(records)
