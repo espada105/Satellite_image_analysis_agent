@@ -1,0 +1,47 @@
+[project]
+name = "satellite-image-analysis-agent"
+version = "0.1.0"
+description = "Minimal RAG + MCP + FastAPI satellite image analysis agent"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.8.0",
+  "python-multipart>=0.0.9",
+  "httpx>=0.27.0",
+  "numpy>=1.26.0",
+  "opencv-python>=4.10.0.84",
+  "chromadb>=0.5.5",
+  "sentence-transformers>=3.0.1",
+  "pypdf>=4.2.0",
+  "beautifulsoup4>=4.12.3",
+  "markdown>=3.6",
+  "python-dotenv>=1.0.1"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "pytest-asyncio>=0.23.7",
+  "ruff>=0.5.5"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["orchestrator_api", "mcp_satellite_server"]

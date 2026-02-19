@@ -1,0 +1,23 @@
+# Virtual environments
+.venv/
+
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test / lint cache
+.pytest_cache/
+.ruff_cache/
+
+# OS/editor noise
+.DS_Store
+.vscode/
+.idea/
+
+# Local env files
+.env
+.env.*
+
+# Runtime artifacts
+*.log
