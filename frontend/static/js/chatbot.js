@@ -7,6 +7,7 @@ const chatLog = document.getElementById("chatLog");
 const chatForm = document.getElementById("chatForm");
 const questionInput = document.getElementById("question");
 const imageFileInput = document.getElementById("imageFile");
+const opsInputs = Array.from(document.querySelectorAll("input[data-op]"));
 const logoutBtn = document.getElementById("logoutBtn");
 let typingBubble = null;
 
@@ -50,7 +51,7 @@ function appendStructuredResponse(data) {
 
   const answer = document.createElement("div");
   answer.className = "resp-section";
-  answer.innerHTML = `<strong>Answer</strong><br>${escapeHtml(data.answer || "")}`;
+  answer.innerHTML = `<strong>Answer</strong><br>${escapeHtml(stripMarkdownImageLinks(data.answer || ""))}`;
   wrapper.appendChild(answer);
 
   const tools = data.trace?.tools || [];
@@ -97,6 +98,14 @@ function appendStructuredResponse(data) {
     data.analysis.ops.forEach((op) => {
       const li = document.createElement("li");
       li.textContent = `${op.name}: ${op.summary} | stats=${JSON.stringify(op.stats || {})}`;
+      if (op.artifact_uri) {
+        const artifact = document.createElement("img");
+        artifact.src = op.artifact_uri;
+        artifact.alt = `${op.name}-artifact`;
+        artifact.className = "artifact-image";
+        li.appendChild(artifact);
+        appendImageMessage("bot", op.artifact_uri, `${op.name} artifact`);
+      }
       ul.appendChild(li);
     });
     mcp.appendChild(ul);
@@ -163,6 +172,10 @@ function escapeHtml(text) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function stripMarkdownImageLinks(text) {
+  return text.replaceAll(/!\[[^\]]*]\([^)]+\)/g, "").trim();
 }
 
 async function uploadSelectedImage() {
@@ -256,6 +269,8 @@ chatForm?.addEventListener("submit", async (event) => {
     const payload = { question, top_k: 3 };
     if (imageUri) {
       payload.image_uri = imageUri;
+      const selectedOps = opsInputs.filter((input) => input.checked).map((input) => input.dataset.op);
+      payload.ops = selectedOps.length > 0 ? selectedOps : ["edges"];
     }
 
     const response = await fetch("/chat/stream", {

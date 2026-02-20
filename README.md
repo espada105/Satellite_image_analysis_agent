@@ -86,6 +86,9 @@ uv run uvicorn orchestrator_api.main:app --host 0.0.0.0 --port 8000 --reload
 
 # MCP server (separate terminal)
 uv run uvicorn mcp_satellite_server.server:app --host 0.0.0.0 --port 8100 --reload
+
+# Start both (split processes) in one command
+./scripts/dev_split_run.sh
 ```
 
 Web UI:
@@ -99,11 +102,22 @@ curl -X POST http://127.0.0.1:8000/reindex-docs \
   -H "x-user-id: alice"
 ```
 
+If you get `curl: (7) Failed to connect`:
+1. Start orchestrator server on port `8000`.
+2. Start MCP server on port `8100`.
+3. Retry the command.
+
+Test isolation:
+- Tests use a separate SQLite vector DB at `/tmp/satellite_agent_test_rag_store.sqlite3`.
+- Development/runtime DB path comes from `RAG_STORE_DB_PATH`.
+
 ## Image upload from frontend
 
 - Chatbot form supports local image file upload.
 - Uploaded files are saved under `data/imagery/uploads`.
 - The backend returns `image_uri` and uses it for MCP analysis.
+- MCP analysis artifacts (mask/edge results) are saved under `data/imagery/artifacts`.
+- Artifact preview URLs are returned as `/imagery/artifacts/<file>.png`.
 
 ## Test commands
 

@@ -34,7 +34,7 @@ async def run_chat(request: ChatRequest) -> ChatResponse:
     analysis = AnalysisResult(invoked=False)
     if decision.use_mcp and request.image_uri:
         tools_used.append("mcp.analyze_satellite_image")
-        ops = request.ops or ["edges", "cloud_mask_like", "masking_like"]
+        ops = request.ops or ["edges"]
         analysis = await analyze_image(request.image_uri, ops=ops, roi=request.roi)
 
     answer, llm_error = await generate_answer_with_llm(request.question, citations, analysis)
@@ -86,7 +86,7 @@ async def run_chat_stream(request: ChatRequest) -> AsyncGenerator[dict, None]:
     analysis = AnalysisResult(invoked=False)
     if decision.use_mcp and request.image_uri:
         tools_used.append("mcp.analyze_satellite_image")
-        ops = request.ops or ["edges", "cloud_mask_like", "masking_like"]
+        ops = request.ops or ["edges"]
         analysis = await analyze_image(request.image_uri, ops=ops, roi=request.roi)
 
     yield {

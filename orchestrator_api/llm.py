@@ -10,7 +10,9 @@ from orchestrator_api.schemas import AnalysisResult, Citation
 SYSTEM_PROMPT = (
     "You are a satellite image analysis assistant. "
     "Use citations and analysis results when provided. "
-    "If they are insufficient, still answer the user's general question safely and concisely."
+    "If they are insufficient, still answer the user's general question safely and concisely. "
+    "Do not invent URLs or markdown image links. "
+    "Do not claim files that are not in provided analysis artifacts."
 )
 
 ROUTER_PROMPT = (
