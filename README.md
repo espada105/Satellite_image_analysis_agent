@@ -55,6 +55,7 @@ Use `.env.example` as reference. The app loads `.env` automatically.
 
 - `VERIFIED_USER_IDS`: comma-separated allowed user IDs
 - `MCP_BASE_URL`: MCP server base URL
+- `RAG_STORE_DB_PATH`: SQLite path for persistent vector store
 - `RAG_MIN_SCORE`: minimum retrieval score threshold
 - `RAG_SPARSE_MODEL`: sparse retriever model id (default: `telepix/PIXIE-Splade-v1.0`)
 - `RAG_SPARSE_MIN_WEIGHT`: SPLADE token weight cutoff
