@@ -1,4 +1,5 @@
 import json
+import math
 import sqlite3
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -29,6 +30,10 @@ class SparseVectorStore:
         self._chunk_ids: set[str] = set()
         self._postings: dict[int, list[tuple[int, float]]] = defaultdict(list)
         self._lexical_embeddings: list[Counter[str]] = []
+        self._doc_term_freqs: list[Counter[str]] = []
+        self._doc_lengths: list[int] = []
+        self._doc_freqs: Counter[str] = Counter()
+        self._avg_doc_length: float = 0.0
 
         self._model = None
         self._tokenizer = None
@@ -72,6 +77,9 @@ class SparseVectorStore:
 
         with self._lock:
             self._ensure_ready_locked()
+            query_embedding = embed_text(query)
+            bm25_scores = self._compute_bm25_scores(query_embedding)
+            semantic_scores: dict[int, float] = defaultdict(float)
 
             if self._backend == "sparse":
                 with torch.no_grad():
@@ -81,30 +89,30 @@ class SparseVectorStore:
                 q_nz = np.flatnonzero(q_dense > settings.rag_sparse_min_weight).tolist()
                 q_nz = [token_id for token_id in q_nz if token_id not in self._special_ids]
 
-                scores: dict[int, float] = defaultdict(float)
                 for token_id in q_nz:
                     q_weight = float(q_dense[token_id])
                     for doc_idx, d_weight in self._postings.get(token_id, []):
-                        scores[doc_idx] += q_weight * d_weight
+                        semantic_scores[doc_idx] += q_weight * d_weight
+            else:
+                for idx, emb in enumerate(self._lexical_embeddings):
+                    semantic_scores[idx] = cosine_similarity(query_embedding, emb)
 
-                ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-                results: list[tuple[ChunkRecord, float]] = []
-                for doc_idx, score in ranked:
-                    if score < min_score:
-                        continue
-                    results.append((self._records[doc_idx], float(score)))
-                    if len(results) >= top_k:
-                        break
-                return results
+            max_sem = max(semantic_scores.values(), default=0.0) or 1.0
+            max_bm25 = max(bm25_scores.values(), default=0.0) or 1.0
+            alpha = max(0.0, min(1.0, settings.rag_hybrid_alpha))
 
-            query_embedding = embed_text(query)
-            scored = [
-                (chunk, cosine_similarity(query_embedding, embedding))
-                for chunk, embedding in zip(self._records, self._lexical_embeddings, strict=True)
-            ]
-            scored = [item for item in scored if item[1] >= min_score]
-            scored.sort(key=lambda item: item[1], reverse=True)
-            return scored[:top_k]
+            merged: list[tuple[ChunkRecord, float]] = []
+            for doc_idx, chunk in enumerate(self._records):
+                sem = semantic_scores.get(doc_idx, 0.0) / max_sem
+                lex = bm25_scores.get(doc_idx, 0.0) / max_bm25
+                score = alpha * sem + (1.0 - alpha) * lex
+                score += self._rerank_score_boost(query_embedding, chunk.text)
+                if score < min_score:
+                    continue
+                merged.append((chunk, float(score)))
+
+            merged.sort(key=lambda item: item[1], reverse=True)
+            return merged[:top_k]
 
     def clear(self, delete_disk: bool = True) -> None:
         with self._lock:
@@ -112,6 +120,10 @@ class SparseVectorStore:
             self._chunk_ids.clear()
             self._postings.clear()
             self._lexical_embeddings.clear()
+            self._doc_term_freqs.clear()
+            self._doc_lengths.clear()
+            self._doc_freqs.clear()
+            self._avg_doc_length = 0.0
             self._disk_loaded = False
 
             if delete_disk:
@@ -150,6 +162,8 @@ class SparseVectorStore:
             doc_index = len(self._records)
             self._records.append(chunk)
             self._chunk_ids.add(chunk.chunk_id)
+            tf = embed_text(chunk.text)
+            self._append_doc_stats(tf)
             chunk_rows.append(
                 (
                     doc_index,
@@ -196,6 +210,7 @@ class SparseVectorStore:
             self._chunk_ids.add(chunk.chunk_id)
             emb = embed_text(chunk.text)
             self._lexical_embeddings.append(emb)
+            self._append_doc_stats(emb)
 
             chunk_rows.append(
                 (
@@ -289,6 +304,7 @@ class SparseVectorStore:
                 )
                 conn.commit()
 
+        self._rebuild_doc_stats_locked()
         self._disk_loaded = True
 
     def _ensure_backend_locked(self) -> None:
@@ -304,6 +320,66 @@ class SparseVectorStore:
         except Exception as exc:  # noqa: BLE001
             self._backend = "lexical"
             self._backend_error = str(exc)
+
+    def _append_doc_stats(self, tf: Counter[str]) -> None:
+        self._doc_term_freqs.append(tf)
+        doc_len = sum(tf.values())
+        self._doc_lengths.append(doc_len)
+        for term in tf:
+            self._doc_freqs[term] += 1
+        total_docs = len(self._doc_lengths)
+        self._avg_doc_length = (sum(self._doc_lengths) / total_docs) if total_docs else 0.0
+
+    def _rebuild_doc_stats_locked(self) -> None:
+        self._doc_term_freqs = []
+        self._doc_lengths = []
+        self._doc_freqs = Counter()
+        for chunk in self._records:
+            tf = embed_text(chunk.text)
+            self._doc_term_freqs.append(tf)
+            self._doc_lengths.append(sum(tf.values()))
+            for term in tf:
+                self._doc_freqs[term] += 1
+        total_docs = len(self._doc_lengths)
+        self._avg_doc_length = (sum(self._doc_lengths) / total_docs) if total_docs else 0.0
+
+    def _compute_bm25_scores(self, query_tf: Counter[str]) -> dict[int, float]:
+        scores: dict[int, float] = defaultdict(float)
+        if not query_tf or not self._doc_term_freqs:
+            return scores
+
+        total_docs = len(self._doc_term_freqs)
+        avgdl = self._avg_doc_length or 1.0
+        k1 = settings.rag_bm25_k1
+        b = settings.rag_bm25_b
+
+        for term in query_tf:
+            df = self._doc_freqs.get(term, 0)
+            if df <= 0:
+                continue
+            idf = math.log(1.0 + (total_docs - df + 0.5) / (df + 0.5))
+            for idx, doc_tf in enumerate(self._doc_term_freqs):
+                tf = doc_tf.get(term, 0)
+                if tf <= 0:
+                    continue
+                dl = self._doc_lengths[idx] or 1
+                denom = tf + k1 * (1.0 - b + b * (dl / avgdl))
+                scores[idx] += idf * ((tf * (k1 + 1.0)) / denom)
+
+        return scores
+
+    def _rerank_score_boost(self, query_tf: Counter[str], text: str) -> float:
+        if not query_tf or not text:
+            return 0.0
+        first_line = text.splitlines()[0].lower() if text else ""
+        coverage = 0
+        for term in query_tf:
+            if term.lower() in first_line:
+                coverage += 1
+        if coverage == 0:
+            return 0.0
+        ratio = coverage / max(1, len(query_tf))
+        return ratio * settings.rag_rerank_heading_boost
 
     def _init_db(self) -> None:
         with self._connect() as conn:

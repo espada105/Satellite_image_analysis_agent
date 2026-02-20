@@ -59,7 +59,13 @@ Use `.env.example` as reference. The app loads `.env` automatically.
 - `RAG_MIN_SCORE`: minimum retrieval score threshold
 - `RAG_SPARSE_MODEL`: sparse retriever model id (default: `telepix/PIXIE-Splade-v1.0`)
 - `RAG_SPARSE_MIN_WEIGHT`: SPLADE token weight cutoff
+- `RAG_HYBRID_ALPHA`: hybrid score weight (semantic vs BM25)
+- `RAG_BM25_K1`, `RAG_BM25_B`: BM25 parameters
+- `RAG_RERANK_HEADING_BOOST`: heading-coverage rerank boost
 - `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`: optional LLM synthesis
+- `LOG_LEVEL`, `LOG_JSON`: logging controls
+- `ENABLE_METRICS`: expose `/metrics` Prometheus endpoint
+- `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`: API rate limiting
 
 ## Access control (verified IDs)
 
@@ -95,6 +101,31 @@ Web UI:
 - Login page: `http://127.0.0.1:8000/`
 - Chatbot page: `http://127.0.0.1:8000/chatbot`
 
+## Operational quality
+
+- App startup initialization uses FastAPI `lifespan` (startup event warning removed).
+- Structured access logs are emitted with `request_id`, method/path, status, latency.
+- In-memory rate limiting is enabled by default (per `x-user-id`, fallback IP).
+- Prometheus text metrics endpoint: `GET /metrics`.
+
+Metrics examples:
+
+```bash
+curl http://127.0.0.1:8000/metrics
+```
+
+Key metrics:
+- `http_requests_total`
+- `http_requests_by_status_total{status="..."}`
+- `http_request_latency_ms_sum`, `http_request_latency_ms_count`
+- `http_rate_limited_total`
+
+## Search quality upgrades
+
+- Header-aware chunking for markdown-style docs (`#`, `##`, ...).
+- Hybrid retrieval score: semantic sparse retrieval + BM25 lexical retrieval.
+- Lightweight reranking boost for heading/query term coverage.
+
 Reindex docs into vector store:
 
 ```bash
@@ -124,4 +155,23 @@ Test isolation:
 ```bash
 uv run pytest -q
 uv run ruff check .
+```
+
+## Deployment packaging
+
+Included templates:
+- `Dockerfile.orchestrator`
+- `Dockerfile.mcp`
+- `docker-compose.yml` (orchestrator + mcp + caddy reverse proxy)
+- `deploy/Caddyfile` (HTTPS via Caddy + domain)
+- `deploy/grafana-dashboard.json` (Grafana import template)
+- `.github/workflows/ci.yml` (lint/test + docker build)
+
+Example:
+
+```bash
+export DOMAIN=your-domain.example.com
+export VERIFIED_USER_IDS=alice,bob
+export LLM_API_KEY=...
+docker compose up -d --build
 ```

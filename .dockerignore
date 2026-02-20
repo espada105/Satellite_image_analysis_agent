@@ -1,0 +1,10 @@
+.git
+.gitignore
+.venv
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+data/vector_store/*.sqlite3
+data/imagery/uploads/*
+data/imagery/artifacts/*

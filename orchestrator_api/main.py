@@ -1,19 +1,25 @@
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from orchestrator_api.config import settings
+from orchestrator_api.observability import (
+    RateLimitMiddleware,
+    RequestMetricsAndLoggingMiddleware,
+    configure_logging,
+    metrics_registry,
+)
 from orchestrator_api.rag.ingest import ingest_documents
 from orchestrator_api.rag.store import store
 from orchestrator_api.schemas import ChatRequest, ChatResponse, IngestRequest, IngestResponse
 from orchestrator_api.security import require_verified_user
 from orchestrator_api.services.chat_service import run_chat, run_chat_stream
 
-app = FastAPI(title="Satellite Orchestrator API", version="0.1.0")
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "frontend"
 STATIC_DIR = FRONTEND_DIR / "static"
@@ -22,11 +28,6 @@ DOCS_DIR = ROOT_DIR / "data" / "docs"
 UPLOADS_DIR = IMAGERY_DIR / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-app.mount("/imagery", StaticFiles(directory=IMAGERY_DIR), name="imagery")
-
-
-@app.on_event("startup")
 def startup_ingest_docs() -> None:
     if store.count() > 0:
         return
@@ -45,9 +46,31 @@ def startup_ingest_docs() -> None:
     ingest_documents(docs)
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    configure_logging()
+    startup_ingest_docs()
+    yield
+
+
+app = FastAPI(title="Satellite Orchestrator API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(RequestMetricsAndLoggingMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/imagery", StaticFiles(directory=IMAGERY_DIR), name="imagery")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "mcp_base_url": settings.mcp_base_url}
+
+
+@app.get("/metrics")
+def metrics() -> PlainTextResponse:
+    if not settings.enable_metrics:
+        return PlainTextResponse("metrics disabled\n", status_code=404)
+    body = metrics_registry.render_prometheus()
+    return PlainTextResponse(body, media_type="text/plain; version=0.0.4")
 
 
 @app.get("/", include_in_schema=False)

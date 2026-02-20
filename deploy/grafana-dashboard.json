@@ -1,0 +1,47 @@
+{
+  "title": "Satellite Orchestrator API",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request Rate",
+      "targets": [
+        {
+          "expr": "rate(http_requests_total[5m])",
+          "legendFormat": "rps"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Avg Latency (ms)",
+      "targets": [
+        {
+          "expr": "rate(http_request_latency_ms_sum[5m]) / clamp_min(rate(http_request_latency_ms_count[5m]), 1)",
+          "legendFormat": "avg"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP 5xx Rate",
+      "targets": [
+        {
+          "expr": "rate(http_requests_by_status_total{status=~\"5..\"}[5m])",
+          "legendFormat": "5xx"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Rate Limited (total)",
+      "targets": [
+        {
+          "expr": "http_rate_limited_total"
+        }
+      ]
+    }
+  ]
+}

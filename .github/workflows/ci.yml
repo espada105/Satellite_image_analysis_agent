@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "codex/**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+      - name: Lint
+        run: ruff check .
+      - name: Tests
+        env:
+          VERIFIED_USER_IDS: alice
+          RAG_STORE_DB_PATH: /tmp/satellite_agent_ci_rag_store.sqlite3
+        run: pytest -q
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build orchestrator image
+        run: docker build -f Dockerfile.orchestrator -t satellite-orchestrator:ci .
+      - name: Build mcp image
+        run: docker build -f Dockerfile.mcp -t satellite-mcp:ci .
