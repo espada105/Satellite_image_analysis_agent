@@ -8,6 +8,7 @@ const chatForm = document.getElementById("chatForm");
 const questionInput = document.getElementById("question");
 const imageFileInput = document.getElementById("imageFile");
 const logoutBtn = document.getElementById("logoutBtn");
+const llmStatus = document.getElementById("llmStatus");
 let typingBubble = null;
 let typingRawText = "";
 
@@ -110,7 +111,6 @@ function appendStructuredResponse(data) {
         artifact.className = "artifact-image";
         attachImageFallback(artifact, op.artifact_uri);
         li.appendChild(artifact);
-        appendImageMessage("bot", op.artifact_uri, `${op.name} artifact`);
       }
       ul.appendChild(li);
     });
@@ -153,25 +153,31 @@ function endTypingBubble() {
 }
 
 function appendStatus(event) {
+  if (event.stage === "route") {
+    setProgressStatus("도구 판단 중");
+    return;
+  }
   if (event.stage === "llm") {
-    appendTextMessage("bot", "[stream] LLM 답변 생성 중...");
+    setProgressStatus("LLM 답변 생성 중");
     return;
   }
   if (event.stage === "rag") {
-    appendTextMessage(
-      "bot",
-      `[stream] RAG used=${event.used} hits=${event.hits} min_score=${event.min_score} relaxed=${event.relaxed || false}`,
-    );
+    setProgressStatus(event.used ? `RAG 검색 완료 (hits ${event.hits})` : "RAG 스킵");
     return;
   }
   if (event.stage === "mcp") {
-    appendTextMessage(
-      "bot",
-      `[stream] MCP invoked=${event.invoked} ops=${(event.ops || []).join(",") || "(none)"}`,
-    );
+    const opSummary = (event.ops || []).join(", ") || "none";
+    setProgressStatus(event.invoked ? `MCP 분석 (${opSummary})` : "MCP 스킵");
     return;
   }
-  appendTextMessage("bot", `[stream] ${event.stage || "processing"}`);
+  setProgressStatus("처리 중");
+}
+
+function setProgressStatus(text) {
+  if (!llmStatus) {
+    return;
+  }
+  llmStatus.textContent = text;
 }
 
 function escapeHtml(text) {
@@ -336,6 +342,7 @@ chatForm?.addEventListener("submit", async (event) => {
   }
 
   try {
+    setProgressStatus("요청 전송 중");
     let imageUri = "";
 
     if (hasImageFile) {
@@ -368,6 +375,7 @@ chatForm?.addEventListener("submit", async (event) => {
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       appendTextMessage("bot", `요청 실패: ${data.detail || response.status}`);
+      setProgressStatus("요청 실패");
       return;
     }
 
@@ -375,11 +383,14 @@ chatForm?.addEventListener("submit", async (event) => {
     endTypingBubble();
     if (finalData) {
       appendStructuredResponse(finalData);
+      setProgressStatus("완료");
     } else {
       appendTextMessage("bot", "스트리밍 응답이 비어 있습니다.");
+      setProgressStatus("응답 없음");
     }
   } catch (error) {
     appendTextMessage("bot", `요청 실패: ${error.message || "unknown error"}`);
+    setProgressStatus("오류");
   }
 });
 
