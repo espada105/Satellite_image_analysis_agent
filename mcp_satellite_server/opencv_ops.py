@@ -1,5 +1,6 @@
 from pathlib import Path
 from urllib.request import urlopen
+from uuid import uuid4
 
 import cv2
 import numpy as np
@@ -7,6 +8,9 @@ import numpy as np
 from mcp_satellite_server.schemas import OpResult
 
 SUPPORTED_OPS = {"edges", "threshold", "morphology", "cloud_mask_like", "masking_like"}
+ROOT_DIR = Path(__file__).resolve().parent.parent
+ARTIFACT_DIR = ROOT_DIR / "data" / "imagery" / "artifacts"
+ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def analyze_satellite_image(
@@ -26,26 +30,31 @@ def analyze_satellite_image(
             op_results.append(OpResult(name=op, summary="unsupported op", stats={}))
             continue
 
+        artifact_uri = None
         if op == "edges":
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray, 80, 160)
             ratio = float(np.count_nonzero(edges)) / float(edges.size)
+            artifact_uri = _save_artifact(edges, op)
             op_results.append(
                 OpResult(
                     name=op,
                     summary=f"Edge density is {ratio:.2%}",
                     stats={"edge_density": round(ratio, 6)},
+                    artifact_uri=artifact_uri,
                 )
             )
         elif op == "threshold":
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             _, binary = cv2.threshold(gray, 170, 255, cv2.THRESH_BINARY)
             bright_ratio = float(np.count_nonzero(binary)) / float(binary.size)
+            artifact_uri = _save_artifact(binary, op)
             op_results.append(
                 OpResult(
                     name=op,
                     summary=f"Bright area ratio is {bright_ratio:.2%}",
                     stats={"bright_ratio": round(bright_ratio, 6)},
+                    artifact_uri=artifact_uri,
                 )
             )
         elif op == "morphology":
@@ -54,11 +63,13 @@ def analyze_satellite_image(
             kernel = np.ones((3, 3), np.uint8)
             morphed = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
             dense_ratio = float(np.count_nonzero(morphed)) / float(morphed.size)
+            artifact_uri = _save_artifact(morphed, op)
             op_results.append(
                 OpResult(
                     name=op,
                     summary=f"Morphology foreground ratio is {dense_ratio:.2%}",
                     stats={"foreground_ratio": round(dense_ratio, 6)},
+                    artifact_uri=artifact_uri,
                 )
             )
         elif op == "cloud_mask_like":
@@ -67,11 +78,13 @@ def analyze_satellite_image(
             upper = np.array([180, 80, 255])
             mask = cv2.inRange(hsv, lower, upper)
             cloud_ratio = float(np.count_nonzero(mask)) / float(mask.size)
+            artifact_uri = _save_artifact(mask, op)
             op_results.append(
                 OpResult(
                     name=op,
                     summary=f"Estimated cloud-like coverage is {cloud_ratio:.2%}",
                     stats={"cloud_like_ratio": round(cloud_ratio, 6)},
+                    artifact_uri=artifact_uri,
                 )
             )
         elif op == "masking_like":
@@ -80,15 +93,26 @@ def analyze_satellite_image(
             upper = np.array([95, 255, 255])
             mask = cv2.inRange(hsv, lower, upper)
             mask_ratio = float(np.count_nonzero(mask)) / float(mask.size)
+            artifact_uri = _save_artifact(mask, op)
             op_results.append(
                 OpResult(
                     name=op,
                     summary=f"Simple color-mask coverage is {mask_ratio:.2%}",
                     stats={"mask_ratio": round(mask_ratio, 6)},
+                    artifact_uri=artifact_uri,
                 )
             )
 
     return op_results
+
+
+def _save_artifact(image: np.ndarray, op: str) -> str | None:
+    filename = f"{op}_{uuid4().hex[:12]}.png"
+    destination = ARTIFACT_DIR / filename
+    ok = cv2.imwrite(str(destination), image)
+    if not ok:
+        return None
+    return f"/imagery/artifacts/{filename}"
 
 
 def _load_image(image_uri: str) -> np.ndarray | None:

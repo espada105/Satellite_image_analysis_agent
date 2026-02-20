@@ -1,6 +1,7 @@
 :root {
-  --bg-0: #02030a;
-  --bg-1: #070b1a;
+  --bg-0: #010106;
+  --bg-1: #030611;
+  --bg-2: #060b1b;
   --line: rgba(255, 255, 255, 0.16);
   --text: #f3f6ff;
   --title: rgba(255, 255, 255, 0.26);
@@ -21,7 +22,10 @@ body {
 }
 
 .space-page {
-  background: radial-gradient(circle at 20% 10%, #0d1634 0%, var(--bg-1) 35%, var(--bg-0) 100%);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(43, 66, 120, 0.36) 0%, rgba(14, 21, 42, 0.14) 28%, transparent 50%),
+    radial-gradient(circle at 78% 16%, rgba(36, 58, 116, 0.24) 0%, rgba(8, 14, 30, 0.1) 26%, transparent 44%),
+    radial-gradient(circle at 50% 120%, var(--bg-2) 0%, var(--bg-1) 48%, var(--bg-0) 100%);
   overflow: hidden;
 }
 
@@ -30,18 +34,15 @@ body {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background-image: radial-gradient(2px 2px at 20px 30px, rgba(255, 255, 255, 0.8), transparent),
-    radial-gradient(1px 1px at 40px 70px, rgba(255, 255, 255, 0.6), transparent),
-    radial-gradient(1px 1px at 90px 40px, rgba(180, 210, 255, 0.8), transparent),
-    radial-gradient(1px 1px at 130px 80px, rgba(255, 255, 255, 0.8), transparent);
-  background-size: 160px 120px;
-  animation: drift 90s linear infinite;
+  background-repeat: no-repeat;
+  animation: drift 110s linear infinite;
 }
 
 .stars-2 {
-  opacity: 0.45;
+  opacity: 0.62;
   transform: scale(1.4);
-  animation-duration: 130s;
+  animation-duration: 170s;
+  filter: blur(0.2px);
 }
 
 @keyframes drift {
@@ -49,7 +50,7 @@ body {
     transform: translateY(0);
   }
   to {
-    transform: translateY(-120px);
+    transform: translateY(-160px);
   }
 }
 
@@ -64,10 +65,24 @@ body {
 .site-title {
   margin: 0;
   text-align: center;
-  letter-spacing: 0.14em;
-  font-size: clamp(2rem, 8vw, 6.8rem);
-  color: var(--title);
-  text-shadow: 0 0 34px rgba(255, 255, 255, 0.15);
+  letter-spacing: 0.12em;
+  font-size: clamp(2.4rem, 8.8vw, 7.8rem);
+  color: rgba(234, 242, 255, 0.9);
+  text-shadow:
+    0 0 8px rgba(178, 215, 255, 0.7),
+    0 0 28px rgba(95, 167, 255, 0.42),
+    0 0 66px rgba(180, 224, 255, 0.2);
+  -webkit-text-stroke: 1px rgba(238, 246, 255, 0.28);
+  background: linear-gradient(
+    118deg,
+    rgba(255, 255, 255, 0.95) 12%,
+    rgba(192, 223, 255, 0.88) 46%,
+    rgba(255, 255, 255, 0.74) 68%,
+    rgba(161, 204, 255, 0.92) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .login-card {
@@ -134,9 +149,27 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.chat-head-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .chat-head h1 {
   margin: 0;
   font-size: 1.1rem;
+}
+
+.llm-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(118, 186, 255, 0.46);
+  background: rgba(72, 128, 214, 0.18);
+  color: rgba(223, 239, 255, 0.95);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
 }
 
 .ghost-btn {
@@ -172,19 +205,30 @@ button {
   opacity: 0.85;
 }
 
+.artifact-image {
+  display: block;
+  margin-top: 8px;
+  width: min(260px, 62vw);
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
 .msg.user {
   justify-self: end;
-  max-width: 76%;
+  width: min(76%, 760px);
   background: rgba(71, 114, 255, 0.28);
 }
 
 .msg.bot {
   justify-self: start;
-  max-width: 86%;
+  width: min(86%, 820px);
   background: rgba(255, 255, 255, 0.08);
 }
 
 .typing {
+  min-height: 44px;
   border: 1px solid rgba(108, 200, 255, 0.35);
   box-shadow: 0 0 18px rgba(108, 200, 255, 0.16);
 }
@@ -195,29 +239,6 @@ button {
   display: grid;
   gap: 8px;
   grid-template-columns: 1fr;
-}
-
-.ops-panel {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 10px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.ops-title {
-  grid-column: 1 / -1;
-  font-size: 0.85rem;
-  opacity: 0.88;
-}
-
-.ops-panel label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
 }
 
 .resp-title {
@@ -245,6 +266,7 @@ button {
 @media (max-width: 640px) {
   .site-title {
     letter-spacing: 0.08em;
+    font-size: clamp(2rem, 10vw, 3.6rem);
   }
 
   .login-card {
@@ -255,5 +277,10 @@ button {
     width: calc(100vw - 12px);
     height: 92vh;
     margin: 4vh auto;
+  }
+
+  .msg.user,
+  .msg.bot {
+    width: min(96%, 96%);
   }
 }

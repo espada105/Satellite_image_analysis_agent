@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from fastapi.testclient import TestClient
 
+from mcp_satellite_server.opencv_ops import ARTIFACT_DIR
 from mcp_satellite_server.server import app
 
 
@@ -27,3 +28,9 @@ def test_mcp_analyze_satellite_image(tmp_path: Path) -> None:
     assert len(data["ops"]) == 3
     assert data["ops"][0]["name"] == "edges"
     assert data["ops"][2]["name"] == "masking_like"
+    for op in data["ops"]:
+        assert op["artifact_uri"] is not None
+        assert op["artifact_uri"].startswith("/imagery/artifacts/")
+        artifact_name = op["artifact_uri"].split("/imagery/artifacts/", 1)[1]
+        artifact_path = ARTIFACT_DIR / artifact_name
+        assert artifact_path.exists()

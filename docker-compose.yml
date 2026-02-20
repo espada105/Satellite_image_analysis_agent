@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    environment:
+      - LOG_LEVEL=INFO
+      - LOG_JSON=true
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    environment:
+      - MCP_BASE_URL=http://mcp:8100
+      - VERIFIED_USER_IDS=${VERIFIED_USER_IDS}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_REQUESTS=120
+      - RATE_LIMIT_WINDOW_SECONDS=60
+      - ENABLE_METRICS=true
+      - LOG_LEVEL=INFO
+      - LOG_JSON=true
+    depends_on:
+      - mcp
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - orchestrator
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
