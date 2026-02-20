@@ -23,6 +23,16 @@ ROUTER_PROMPT = (
     "If question is visual analysis and image is available, use_mcp=true."
 )
 
+OPS_SELECTOR_PROMPT = (
+    "Choose image analysis ops for a satellite assistant. Return ONLY JSON with keys "
+    "ops (array of strings), reason (string). "
+    "Allowed ops: edges, threshold, morphology, cloud_mask_like, masking_like. "
+    "Pick 1-3 ops that best match the user question and image-analysis intent. "
+    "Do not include any key except ops and reason."
+)
+
+SUPPORTED_OPS = {"edges", "threshold", "morphology", "cloud_mask_like", "masking_like"}
+
 
 @dataclass(frozen=True)
 class ToolDecision:
@@ -115,7 +125,7 @@ async def generate_answer_with_llm(
             }
             for c in citations
         ],
-        "analysis": analysis.model_dump(),
+        "analysis": _analysis_for_llm(analysis),
     }
 
     headers = {
@@ -139,6 +149,56 @@ async def generate_answer_with_llm(
     return None, "empty_llm_output"
 
 
+async def decide_image_ops(
+    question: str,
+    timeout_s: float = 12.0,
+) -> tuple[list[str], str]:
+    fallback_ops = _fallback_ops(question)
+    if not llm_enabled():
+        return fallback_ops, "ops_rule_fallback:llm_not_configured"
+
+    headers = {
+        "Authorization": f"Bearer {settings.llm_api_key}",
+        "Content-Type": "application/json",
+    }
+    selector_input = {"question": question, "allowed_ops": sorted(SUPPORTED_OPS)}
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response_text = await _request_text_with_responses_or_chat(
+                client=client,
+                headers=headers,
+                system_prompt=OPS_SELECTOR_PROMPT,
+                user_payload=selector_input,
+            )
+    except Exception as exc:  # noqa: BLE001
+        return fallback_ops, f"ops_rule_fallback:{exc}"
+
+    parsed = _extract_json_object(response_text or "")
+    if not parsed:
+        return fallback_ops, "ops_rule_fallback:selector_parse_failed"
+
+    raw_ops = parsed.get("ops", [])
+    if not isinstance(raw_ops, list):
+        return fallback_ops, "ops_rule_fallback:selector_invalid_type"
+
+    chosen_ops: list[str] = []
+    for op in raw_ops:
+        if not isinstance(op, str):
+            continue
+        normalized = op.strip()
+        if normalized in SUPPORTED_OPS and normalized not in chosen_ops:
+            chosen_ops.append(normalized)
+        if len(chosen_ops) >= 3:
+            break
+
+    if not chosen_ops:
+        return fallback_ops, "ops_rule_fallback:selector_empty"
+
+    reason = str(parsed.get("reason", "llm_ops_selector"))
+    return chosen_ops, reason
+
+
 async def stream_answer_with_llm(
     question: str,
     citations: list[Citation],
@@ -159,7 +219,7 @@ async def stream_answer_with_llm(
             }
             for c in citations
         ],
-        "analysis": analysis.model_dump(),
+        "analysis": _analysis_for_llm(analysis),
     }
 
     headers = {
@@ -265,6 +325,36 @@ def _parse_chat_completions_output(data: dict) -> str | None:
     if isinstance(text, str) and text.strip():
         return text.strip()
     return None
+
+
+def _analysis_for_llm(analysis: AnalysisResult) -> dict:
+    return {
+        "invoked": analysis.invoked,
+        "error": analysis.error,
+        "ops": [
+            {
+                "name": op.name,
+                "summary": op.summary,
+                "stats": op.stats,
+            }
+            for op in analysis.ops
+        ],
+    }
+
+
+def _fallback_ops(question: str) -> list[str]:
+    text = question.lower()
+    if any(keyword in text for keyword in ("구름", "cloud")):
+        return ["cloud_mask_like"]
+    if any(keyword in text for keyword in ("식생", "녹지", "vegetation", "mask")):
+        return ["masking_like"]
+    if any(keyword in text for keyword in ("경계", "edge", "윤곽")):
+        return ["edges"]
+    if any(keyword in text for keyword in ("밝", "임계", "threshold")):
+        return ["threshold"]
+    if any(keyword in text for keyword in ("노이즈", "morphology", "morph")):
+        return ["morphology"]
+    return ["edges"]
 
 
 def _extract_json_object(raw_text: str) -> dict | None:

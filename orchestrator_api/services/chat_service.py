@@ -2,7 +2,7 @@ import time
 from collections.abc import AsyncGenerator
 
 from orchestrator_api.config import settings
-from orchestrator_api.llm import decide_tool_usage, generate_answer_with_llm, stream_answer_with_llm
+from orchestrator_api.llm import decide_image_ops, decide_tool_usage, generate_answer_with_llm, stream_answer_with_llm
 from orchestrator_api.mcp_client import analyze_image
 from orchestrator_api.rag.retrieve import retrieve_citations
 from orchestrator_api.schemas import AnalysisResult, ChatRequest, ChatResponse, TraceInfo
@@ -34,7 +34,12 @@ async def run_chat(request: ChatRequest) -> ChatResponse:
     analysis = AnalysisResult(invoked=False)
     if decision.use_mcp and request.image_uri:
         tools_used.append("mcp.analyze_satellite_image")
-        ops = request.ops or ["edges"]
+        if request.ops:
+            ops = request.ops
+            tools_used.append("mcp.ops:client")
+        else:
+            ops, ops_reason = await decide_image_ops(request.question)
+            tools_used.append(f"mcp.ops:{ops_reason}")
         analysis = await analyze_image(request.image_uri, ops=ops, roi=request.roi)
 
     answer, llm_error = await generate_answer_with_llm(request.question, citations, analysis)
@@ -44,6 +49,7 @@ async def run_chat(request: ChatRequest) -> ChatResponse:
         if llm_error:
             tools_used.append(f"llm.fallback:{llm_error}")
         answer = _compose_answer(request.question, citations, analysis)
+    answer = _append_mcp_tools_to_answer(answer, analysis)
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     trace = TraceInfo(tools=tools_used, latency_ms=latency_ms)
@@ -86,7 +92,12 @@ async def run_chat_stream(request: ChatRequest) -> AsyncGenerator[dict, None]:
     analysis = AnalysisResult(invoked=False)
     if decision.use_mcp and request.image_uri:
         tools_used.append("mcp.analyze_satellite_image")
-        ops = request.ops or ["edges"]
+        if request.ops:
+            ops = request.ops
+            tools_used.append("mcp.ops:client")
+        else:
+            ops, ops_reason = await decide_image_ops(request.question)
+            tools_used.append(f"mcp.ops:{ops_reason}")
         analysis = await analyze_image(request.image_uri, ops=ops, roi=request.roi)
 
     yield {
@@ -125,6 +136,7 @@ async def run_chat_stream(request: ChatRequest) -> AsyncGenerator[dict, None]:
             yield {"type": "answer_start"}
             for chunk in _chunk_text(answer, size=24):
                 yield {"type": "answer_chunk", "text": chunk}
+    answer = _append_mcp_tools_to_answer(answer, analysis)
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     trace = TraceInfo(tools=tools_used, latency_ms=latency_ms)
@@ -191,3 +203,14 @@ def _chunk_text(text: str, size: int = 24) -> list[str]:
     if not text:
         return []
     return [text[i : i + size] for i in range(0, len(text), size)]
+
+
+def _append_mcp_tools_to_answer(answer: str, analysis: AnalysisResult) -> str:
+    if not analysis.invoked:
+        return answer
+    if analysis.error:
+        return f"{answer}\n\nMCP tools: (failed)"
+    op_names = [op.name for op in analysis.ops if op.name]
+    if not op_names:
+        return f"{answer}\n\nMCP tools: (none)"
+    return f"{answer}\n\nMCP tools: {', '.join(op_names)}"

@@ -172,6 +172,16 @@ button {
   opacity: 0.85;
 }
 
+.artifact-image {
+  display: block;
+  margin-top: 8px;
+  width: min(260px, 62vw);
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
 .msg.user {
   justify-self: end;
   max-width: 76%;
@@ -195,29 +205,6 @@ button {
   display: grid;
   gap: 8px;
   grid-template-columns: 1fr;
-}
-
-.ops-panel {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 10px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.ops-title {
-  grid-column: 1 / -1;
-  font-size: 0.85rem;
-  opacity: 0.88;
-}
-
-.ops-panel label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
 }
 
 .resp-title {

@@ -7,9 +7,9 @@ const chatLog = document.getElementById("chatLog");
 const chatForm = document.getElementById("chatForm");
 const questionInput = document.getElementById("question");
 const imageFileInput = document.getElementById("imageFile");
-const opsInputs = Array.from(document.querySelectorAll("input[data-op]"));
 const logoutBtn = document.getElementById("logoutBtn");
 let typingBubble = null;
+let typingRawText = "";
 
 function appendTextMessage(role, text) {
   const div = document.createElement("div");
@@ -24,9 +24,10 @@ function appendImageMessage(role, src, caption = "") {
   wrapper.className = `msg ${role}`;
 
   const image = document.createElement("img");
-  image.src = src;
+  image.src = resolveRenderableImageSrc(src);
   image.alt = "uploaded-image";
   image.className = "chat-image";
+  attachImageFallback(image, src);
   wrapper.appendChild(image);
 
   if (caption) {
@@ -51,7 +52,11 @@ function appendStructuredResponse(data) {
 
   const answer = document.createElement("div");
   answer.className = "resp-section";
-  answer.innerHTML = `<strong>Answer</strong><br>${escapeHtml(stripMarkdownImageLinks(data.answer || ""))}`;
+  const answerLabel = document.createElement("strong");
+  answerLabel.textContent = "Answer";
+  answer.appendChild(answerLabel);
+  answer.appendChild(document.createElement("br"));
+  appendRichContent(answer, data.answer || "");
   wrapper.appendChild(answer);
 
   const tools = data.trace?.tools || [];
@@ -100,9 +105,10 @@ function appendStructuredResponse(data) {
       li.textContent = `${op.name}: ${op.summary} | stats=${JSON.stringify(op.stats || {})}`;
       if (op.artifact_uri) {
         const artifact = document.createElement("img");
-        artifact.src = op.artifact_uri;
+        artifact.src = resolveRenderableImageSrc(op.artifact_uri);
         artifact.alt = `${op.name}-artifact`;
         artifact.className = "artifact-image";
+        attachImageFallback(artifact, op.artifact_uri);
         li.appendChild(artifact);
         appendImageMessage("bot", op.artifact_uri, `${op.name} artifact`);
       }
@@ -120,6 +126,7 @@ function startTypingBubble() {
   if (typingBubble) {
     return;
   }
+  typingRawText = "";
   typingBubble = document.createElement("div");
   typingBubble.className = "msg bot typing";
   typingBubble.textContent = "";
@@ -131,7 +138,8 @@ function appendTypingChunk(text) {
   if (!typingBubble) {
     startTypingBubble();
   }
-  typingBubble.textContent += text;
+  typingRawText += text;
+  typingBubble.textContent = sanitizeDisplayText(typingRawText);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
@@ -141,6 +149,7 @@ function endTypingBubble() {
   }
   typingBubble.remove();
   typingBubble = null;
+  typingRawText = "";
 }
 
 function appendStatus(event) {
@@ -176,6 +185,82 @@ function escapeHtml(text) {
 
 function stripMarkdownImageLinks(text) {
   return text.replaceAll(/!\[[^\]]*]\([^)]+\)/g, "").trim();
+}
+
+function stripUrls(text) {
+  return text.replaceAll(/https?:\/\/[^\s)]+/g, "").trim();
+}
+
+function sanitizeDisplayText(text) {
+  return stripUrls(stripMarkdownImageLinks(text));
+}
+
+function normalizeImageUrl(url) {
+  if (url.startsWith("data/imagery/")) {
+    return `/imagery/${url.slice("data/imagery/".length)}`;
+  }
+  if (url.startsWith("imagery/")) {
+    return `/${url}`;
+  }
+  return url;
+}
+
+function isImageUrl(url) {
+  return /\.(png|jpe?g|gif|webp|bmp|tiff?)(\?.*)?$/i.test(url) || url.startsWith("/imagery/");
+}
+
+function resolveRenderableImageSrc(src) {
+  if (!src) {
+    return "";
+  }
+  return normalizeImageUrl(src.trim());
+}
+
+function attachImageFallback(image, rawSrc) {
+  image.addEventListener("error", () => {
+    const fallback = document.createElement("div");
+    fallback.className = "chat-image-caption";
+    fallback.textContent = `이미지 로드 실패: ${rawSrc}`;
+    image.replaceWith(fallback);
+  });
+}
+
+function appendRichContent(container, text) {
+  const regex = /!\[([^\]]*)]\(([^)\s]+)\)|(https?:\/\/[^\s)]+|\/[^\s)]+|data\/imagery\/[^\s)]+)/g;
+  let cursor = 0;
+  let matched = false;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    const [raw, alt, markdownUrl, plainUrl] = match;
+    const start = match.index;
+    if (start > cursor) {
+      container.appendChild(document.createTextNode(text.slice(cursor, start)));
+    }
+
+    const candidateUrl = resolveRenderableImageSrc(markdownUrl || plainUrl || "");
+    if (candidateUrl && isImageUrl(candidateUrl)) {
+      const image = document.createElement("img");
+      image.src = candidateUrl;
+      image.alt = alt || "response-image";
+      image.className = "chat-image";
+      attachImageFallback(image, markdownUrl || plainUrl || "");
+      container.appendChild(document.createElement("br"));
+      container.appendChild(image);
+      container.appendChild(document.createElement("br"));
+      matched = true;
+    } else {
+      container.appendChild(document.createTextNode(raw));
+    }
+    cursor = start + raw.length;
+  }
+
+  if (cursor < text.length) {
+    container.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+  if (!matched && !text) {
+    container.appendChild(document.createTextNode(""));
+  }
 }
 
 async function uploadSelectedImage() {
@@ -269,8 +354,6 @@ chatForm?.addEventListener("submit", async (event) => {
     const payload = { question, top_k: 3 };
     if (imageUri) {
       payload.image_uri = imageUri;
-      const selectedOps = opsInputs.filter((input) => input.checked).map((input) => input.dataset.op);
-      payload.ops = selectedOps.length > 0 ? selectedOps : ["edges"];
     }
 
     const response = await fetch("/chat/stream", {
