@@ -1,4 +1,9 @@
-from fastapi import FastAPI
+import asyncio
+import json
+from uuid import uuid4
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 
 from mcp_satellite_server.opencv_ops import SUPPORTED_OPS, analyze_satellite_image
 from mcp_satellite_server.schemas import (
@@ -8,22 +13,21 @@ from mcp_satellite_server.schemas import (
     McpRpcResponse,
 )
 
-app = FastAPI(title="Satellite MCP Server", version="0.2.0")
+app = FastAPI(title="Satellite MCP Server", version="0.3.0")
+_SESSIONS: dict[str, asyncio.Queue[str]] = {}
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\\ndata: {json.dumps(data, ensure_ascii=False)}\\n\\n"
 
 
-@app.post("/mcp", response_model=McpRpcResponse)
-def mcp_rpc(payload: McpRpcRequest) -> McpRpcResponse:
+def _dispatch_rpc(payload: McpRpcRequest) -> McpRpcResponse:
     if payload.method == "initialize":
         return McpRpcResponse(
             id=payload.id,
             result={
                 "protocolVersion": "2025-03-26",
-                "serverInfo": {"name": "satellite-mcp", "version": "0.2.0"},
+                "serverInfo": {"name": "satellite-mcp", "version": "0.3.0"},
                 "capabilities": {"tools": {}},
             },
         )
@@ -71,6 +75,51 @@ def mcp_rpc(payload: McpRpcRequest) -> McpRpcResponse:
         id=payload.id,
         error={"code": -32601, "message": f"Method not found: {payload.method}"},
     )
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/mcp", response_model=McpRpcResponse)
+def mcp_rpc(payload: McpRpcRequest) -> McpRpcResponse:
+    return _dispatch_rpc(payload)
+
+
+@app.get("/mcp/sse")
+async def mcp_sse() -> StreamingResponse:
+    session_id = uuid4().hex
+    queue: asyncio.Queue[str] = asyncio.Queue()
+    _SESSIONS[session_id] = queue
+
+    async def event_generator():
+        try:
+            yield _sse(
+                "endpoint",
+                {
+                    "session_id": session_id,
+                    "message_url": f"/mcp/messages/{session_id}",
+                },
+            )
+            while True:
+                event_text = await queue.get()
+                yield event_text
+        finally:
+            _SESSIONS.pop(session_id, None)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.post("/mcp/messages/{session_id}")
+async def mcp_messages(session_id: str, payload: McpRpcRequest) -> dict[str, str]:
+    queue = _SESSIONS.get(session_id)
+    if queue is None:
+        raise HTTPException(status_code=404, detail="Unknown MCP session")
+
+    response = _dispatch_rpc(payload).model_dump()
+    await queue.put(_sse("message", response))
+    return {"status": "accepted"}
 
 
 # Backward-compatible REST endpoint
