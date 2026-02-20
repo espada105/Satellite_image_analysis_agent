@@ -154,30 +154,31 @@ function endTypingBubble() {
 
 function appendStatus(event) {
   if (event.stage === "route") {
-    setProgressStatus("도구 판단 중");
+    setProgressStatus("도구 판단 중", true);
     return;
   }
   if (event.stage === "llm") {
-    setProgressStatus("LLM 답변 생성 중");
+    setProgressStatus("LLM 답변 생성 중", true);
     return;
   }
   if (event.stage === "rag") {
-    setProgressStatus(event.used ? `RAG 검색 완료 (hits ${event.hits})` : "RAG 스킵");
+    setProgressStatus(event.used ? `RAG 검색 중 (hits ${event.hits})` : "RAG 스킵", Boolean(event.used));
     return;
   }
   if (event.stage === "mcp") {
     const opSummary = (event.ops || []).join(", ") || "none";
-    setProgressStatus(event.invoked ? `MCP 분석 (${opSummary})` : "MCP 스킵");
+    setProgressStatus(event.invoked ? `MCP 분석 중 (${opSummary})` : "MCP 스킵", Boolean(event.invoked));
     return;
   }
-  setProgressStatus("처리 중");
+  setProgressStatus("처리 중", true);
 }
 
-function setProgressStatus(text) {
+function setProgressStatus(text, isActive = false) {
   if (!llmStatus) {
     return;
   }
   llmStatus.textContent = text;
+  llmStatus.classList.toggle("is-active", isActive);
 }
 
 function escapeHtml(text) {
@@ -342,7 +343,7 @@ chatForm?.addEventListener("submit", async (event) => {
   }
 
   try {
-    setProgressStatus("요청 전송 중");
+    setProgressStatus("요청 전송 중", true);
     let imageUri = "";
 
     if (hasImageFile) {
@@ -375,7 +376,7 @@ chatForm?.addEventListener("submit", async (event) => {
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       appendTextMessage("bot", `요청 실패: ${data.detail || response.status}`);
-      setProgressStatus("요청 실패");
+      setProgressStatus("요청 실패", false);
       return;
     }
 
@@ -383,14 +384,14 @@ chatForm?.addEventListener("submit", async (event) => {
     endTypingBubble();
     if (finalData) {
       appendStructuredResponse(finalData);
-      setProgressStatus("완료");
+      setProgressStatus("완료", false);
     } else {
       appendTextMessage("bot", "스트리밍 응답이 비어 있습니다.");
-      setProgressStatus("응답 없음");
+      setProgressStatus("응답 없음", false);
     }
   } catch (error) {
     appendTextMessage("bot", `요청 실패: ${error.message || "unknown error"}`);
-    setProgressStatus("오류");
+    setProgressStatus("오류", false);
   }
 });
 

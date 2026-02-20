@@ -17,7 +17,8 @@ def _parse_file(path: Path) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")
     if suffix in {".html", ".htm"}:
         raw = path.read_text(encoding="utf-8", errors="ignore")
-        return BeautifulSoup(raw, "html.parser").get_text(" ")
+        # Preserve block boundaries as line breaks so line-based citations stay meaningful.
+        return BeautifulSoup(raw, "html.parser").get_text("\n")
     if suffix == ".pdf":
         reader = PdfReader(str(path))
         pages = [page.extract_text() or "" for page in reader.pages]

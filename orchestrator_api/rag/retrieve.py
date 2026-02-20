@@ -1,5 +1,9 @@
+import re
+
 from orchestrator_api.rag.store import store
 from orchestrator_api.schemas import Citation
+
+TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9가-힣_]+")
 
 
 def retrieve_citations(
@@ -12,7 +16,8 @@ def retrieve_citations(
     citations: list[Citation] = []
     chosen_ranges: dict[str, list[tuple[int, int]]] = {}
     for chunk, score in results:
-        if _is_redundant(chunk.doc_id, chunk.line_start, chunk.line_end, chosen_ranges):
+        refined_start, refined_end = _refine_line_span(query, chunk.text, chunk.line_start, chunk.line_end)
+        if _is_redundant(chunk.doc_id, refined_start, refined_end, chosen_ranges):
             continue
 
         citations.append(
@@ -21,11 +26,11 @@ def retrieve_citations(
                 chunk_id=chunk.chunk_id,
                 snippet=chunk.text[:220],
                 score=round(score, 4),
-                line_start=chunk.line_start,
-                line_end=chunk.line_end,
+                line_start=refined_start,
+                line_end=refined_end,
             )
         )
-        chosen_ranges.setdefault(chunk.doc_id, []).append((chunk.line_start, chunk.line_end))
+        chosen_ranges.setdefault(chunk.doc_id, []).append((refined_start, refined_end))
         if len(citations) >= top_k:
             break
     return citations
@@ -46,3 +51,47 @@ def _is_redundant(
         if overlap_ratio >= 0.6:
             return True
     return False
+
+
+def _refine_line_span(query: str, text: str, chunk_line_start: int, chunk_line_end: int) -> tuple[int, int]:
+    lines = text.splitlines()
+    if not lines:
+        return chunk_line_start, chunk_line_end
+
+    source_offset = chunk_line_start
+    if lines and lines[0].startswith("Section: "):
+        lines = lines[1:]
+        source_offset += 1
+    if not lines:
+        return chunk_line_start, chunk_line_end
+
+    query_terms = [token.lower() for token in TOKEN_PATTERN.findall(query) if len(token) >= 2]
+    if not query_terms:
+        return chunk_line_start, chunk_line_end
+
+    per_line_scores = []
+    for line in lines:
+        lowered = line.lower()
+        score = sum(1 for term in query_terms if term in lowered)
+        per_line_scores.append(score)
+
+    max_score = max(per_line_scores, default=0)
+    if max_score <= 0:
+        return chunk_line_start, chunk_line_end
+
+    best_idx = per_line_scores.index(max_score)
+    left = best_idx
+    right = best_idx
+
+    while left - 1 >= 0 and per_line_scores[left - 1] > 0:
+        left -= 1
+    while right + 1 < len(per_line_scores) and per_line_scores[right + 1] > 0:
+        right += 1
+
+    line_start = source_offset + left
+    line_end = source_offset + right
+    line_start = max(chunk_line_start, line_start)
+    line_end = min(chunk_line_end, line_end)
+    if line_start > line_end:
+        return chunk_line_start, chunk_line_end
+    return line_start, line_end

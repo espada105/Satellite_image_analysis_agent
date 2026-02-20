@@ -170,6 +170,29 @@ button {
   color: rgba(223, 239, 255, 0.95);
   font-size: 0.78rem;
   letter-spacing: 0.03em;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.llm-status.is-active {
+  animation: statusPulse 1.15s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0% {
+    opacity: 0.72;
+    background: rgba(45, 80, 142, 0.14);
+    box-shadow: 0 0 0 rgba(108, 192, 255, 0);
+  }
+  50% {
+    opacity: 1;
+    background: rgba(88, 150, 240, 0.33);
+    box-shadow: 0 0 14px rgba(108, 192, 255, 0.42);
+  }
+  100% {
+    opacity: 0.72;
+    background: rgba(45, 80, 142, 0.14);
+    box-shadow: 0 0 0 rgba(108, 192, 255, 0);
+  }
 }
 
 .ghost-btn {
@@ -179,7 +202,8 @@ button {
 .chat-log {
   padding: 12px;
   overflow: auto;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
@@ -216,13 +240,13 @@ button {
 }
 
 .msg.user {
-  justify-self: end;
+  align-self: flex-end;
   width: min(76%, 760px);
   background: rgba(71, 114, 255, 0.28);
 }
 
 .msg.bot {
-  justify-self: start;
+  align-self: flex-start;
   width: min(86%, 820px);
   background: rgba(255, 255, 255, 0.08);
 }
