@@ -10,6 +10,7 @@ load_dotenv()
 class Settings:
     mcp_base_url: str = os.getenv("MCP_BASE_URL", "http://127.0.0.1:8100")
     rag_index_name: str = os.getenv("RAG_INDEX_NAME", "default")
+    rag_store_db_path: str = os.getenv("RAG_STORE_DB_PATH", "data/vector_store/rag_store.sqlite3")
     rag_min_score: float = float(os.getenv("RAG_MIN_SCORE", "0.05"))
     rag_sparse_model: str = os.getenv("RAG_SPARSE_MODEL", "telepix/PIXIE-Splade-v1.0")
     rag_sparse_min_weight: float = float(os.getenv("RAG_SPARSE_MIN_WEIGHT", "0.01"))

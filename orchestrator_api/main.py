@@ -28,6 +28,9 @@ app.mount("/imagery", StaticFiles(directory=IMAGERY_DIR), name="imagery")
 
 @app.on_event("startup")
 def startup_ingest_docs() -> None:
+    if store.count() > 0:
+        return
+
     if not DOCS_DIR.exists():
         return
 
@@ -39,7 +42,6 @@ def startup_ingest_docs() -> None:
     if not docs:
         return
 
-    store.clear()
     ingest_documents(docs)
 
 
@@ -114,7 +116,7 @@ def reindex_docs(_: str | None = Depends(require_verified_user)) -> dict:
         for path in DOCS_DIR.iterdir()
         if path.is_file() and path.suffix.lower() in {".md", ".txt", ".pdf", ".html", ".htm"}
     )
-    store.clear()
+    store.clear(delete_disk=True)
     ingested_count, failed = ingest_documents(docs)
     return {
         "ingested_count": ingested_count,
