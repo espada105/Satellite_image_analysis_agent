@@ -1,5 +1,7 @@
 import re
 
+from orchestrator_api.config import settings
+from orchestrator_api.rag.langchain_retriever import ExistingStoreRetriever
 from orchestrator_api.rag.store import store
 from orchestrator_api.schemas import Citation
 
@@ -11,12 +13,17 @@ def retrieve_citations(
     top_k: int = 3,
     min_score: float = 0.0,
 ) -> list[Citation]:
-    results = store.search(query=query, top_k=max(top_k * 3, top_k), min_score=min_score)
+    results = _search_hits(query=query, top_k=top_k, min_score=min_score)
 
     citations: list[Citation] = []
     chosen_ranges: dict[str, list[tuple[int, int]]] = {}
     for chunk, score in results:
-        refined_start, refined_end = _refine_line_span(query, chunk.text, chunk.line_start, chunk.line_end)
+        refined_start, refined_end = _refine_line_span(
+            query,
+            chunk.text,
+            chunk.line_start,
+            chunk.line_end,
+        )
         if _is_redundant(chunk.doc_id, refined_start, refined_end, chosen_ranges):
             continue
 
@@ -36,6 +43,41 @@ def retrieve_citations(
     return citations
 
 
+def _search_hits(query: str, top_k: int, min_score: float) -> list[tuple]:
+    if settings.use_langchain_pipeline:
+        retriever = ExistingStoreRetriever(top_k=top_k, min_score=min_score)
+        docs = retriever.invoke(query)
+        hits: list[tuple] = []
+        for doc in docs:
+            metadata = doc.metadata or {}
+            chunk = _PseudoChunk(
+                doc_id=str(metadata.get("doc_id", "unknown")),
+                chunk_id=str(metadata.get("chunk_id", "unknown")),
+                text=doc.page_content,
+                line_start=int(metadata.get("line_start", 1)),
+                line_end=int(metadata.get("line_end", 1)),
+            )
+            hits.append((chunk, float(metadata.get("score", 0.0))))
+        return hits
+    return store.search(query=query, top_k=max(top_k * 3, top_k), min_score=min_score)
+
+
+class _PseudoChunk:
+    def __init__(
+        self,
+        doc_id: str,
+        chunk_id: str,
+        text: str,
+        line_start: int,
+        line_end: int,
+    ) -> None:
+        self.doc_id = doc_id
+        self.chunk_id = chunk_id
+        self.text = text
+        self.line_start = line_start
+        self.line_end = line_end
+
+
 def _is_redundant(
     doc_id: str,
     line_start: int,
@@ -53,7 +95,12 @@ def _is_redundant(
     return False
 
 
-def _refine_line_span(query: str, text: str, chunk_line_start: int, chunk_line_end: int) -> tuple[int, int]:
+def _refine_line_span(
+    query: str,
+    text: str,
+    chunk_line_start: int,
+    chunk_line_end: int,
+) -> tuple[int, int]:
     lines = text.splitlines()
     if not lines:
         return chunk_line_start, chunk_line_end
@@ -83,10 +130,12 @@ def _refine_line_span(query: str, text: str, chunk_line_start: int, chunk_line_e
     left = best_idx
     right = best_idx
 
-    while left - 1 >= 0 and per_line_scores[left - 1] > 0:
-        left -= 1
-    while right + 1 < len(per_line_scores) and per_line_scores[right + 1] > 0:
-        right += 1
+    # Only expand span when signal is strong enough; single-term matches stay narrow.
+    if max_score > 1:
+        while left - 1 >= 0 and per_line_scores[left - 1] >= max_score:
+            left -= 1
+        while right + 1 < len(per_line_scores) and per_line_scores[right + 1] >= max_score:
+            right += 1
 
     line_start = source_offset + left
     line_end = source_offset + right

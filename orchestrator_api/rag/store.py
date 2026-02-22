@@ -116,6 +116,8 @@ class SparseVectorStore:
 
     def clear(self, delete_disk: bool = True) -> None:
         with self._lock:
+            # Recreate schema defensively in case test bootstrap removed the DB file.
+            self._init_db()
             self._records.clear()
             self._chunk_ids.clear()
             self._postings.clear()
@@ -247,6 +249,8 @@ class SparseVectorStore:
         if self._disk_loaded:
             return
 
+        # Test bootstrap may recreate/remove sqlite file between imports.
+        self._init_db()
         with self._connect() as conn:
             backend_row = conn.execute(
                 "SELECT value FROM meta WHERE key='backend'"
