@@ -9,8 +9,8 @@ def test_refine_line_span_with_section_prefix() -> None:
         chunk_line_start=80,
         chunk_line_end=95,
     )
-    assert start == 82
-    assert end == 82
+    assert start == 81
+    assert end == 81
 
 
 def test_refine_line_span_falls_back_when_no_match() -> None:

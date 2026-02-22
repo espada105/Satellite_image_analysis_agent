@@ -101,10 +101,16 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 ```bash
 # Orchestrator API
-uv run uvicorn orchestrator_api.main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn orchestrator_api.main:app \
+  --host 0.0.0.0 --port 8000 --reload \
+  --reload-dir orchestrator_api --reload-dir frontend \
+  --reload-exclude ".venv/*" --reload-exclude "data/*"
 
 # MCP server (separate terminal)
-uv run uvicorn mcp_satellite_server.server:app --host 0.0.0.0 --port 8100 --reload
+uv run uvicorn mcp_satellite_server.server:app \
+  --host 0.0.0.0 --port 8100 --reload \
+  --reload-dir mcp_satellite_server \
+  --reload-exclude ".venv/*" --reload-exclude "data/*"
 
 # Start both (split processes) in one command
 ./scripts/dev_split_run.sh

@@ -108,7 +108,6 @@ def _refine_line_span(
     source_offset = chunk_line_start
     if lines and lines[0].startswith("Section: "):
         lines = lines[1:]
-        source_offset += 1
     if not lines:
         return chunk_line_start, chunk_line_end
 
