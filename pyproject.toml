@@ -17,7 +17,9 @@ dependencies = [
   "pypdf>=4.2.0",
   "beautifulsoup4>=4.12.3",
   "markdown>=3.6",
-  "python-dotenv>=1.0.1"
+  "python-dotenv>=1.0.1",
+  "langchain>=0.3.20",
+  "langchain-openai>=0.3.7"
 ]
 
 [project.optional-dependencies]
