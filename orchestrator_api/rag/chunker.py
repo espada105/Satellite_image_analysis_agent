@@ -10,8 +10,7 @@ class TextChunk:
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> list[TextChunk]:
-    text = text.strip("\n")
-    if not text:
+    if not text or not text.strip():
         return []
 
     if chunk_size <= overlap:
@@ -78,8 +77,9 @@ def _chunk_section_lines(
             total_len = projected
             i += 1
 
-        chunk_text_value = "\n".join(acc).strip()
-        if chunk_text_value:
+        raw_chunk_text = "\n".join(acc)
+        if raw_chunk_text.strip():
+            chunk_text_value = raw_chunk_text
             if header and not chunk_text_value.lower().startswith(f"section: {header}".lower()):
                 chunk_text_value = f"Section: {header}\n{chunk_text_value}"
             chunks.append(
