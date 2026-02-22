@@ -63,9 +63,22 @@ Use `.env.example` as reference. The app loads `.env` automatically.
 - `RAG_BM25_K1`, `RAG_BM25_B`: BM25 parameters
 - `RAG_RERANK_HEADING_BOOST`: heading-coverage rerank boost
 - `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`: optional LLM synthesis
+- `USE_LANGCHAIN_PIPELINE`: chat orchestration path toggle (`true` default, set `false` for legacy path)
 - `LOG_LEVEL`, `LOG_JSON`: logging controls
 - `ENABLE_METRICS`: expose `/metrics` Prometheus endpoint
 - `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`: API rate limiting
+
+## LangChain migration mode
+
+- Default runtime path is LangChain pipeline (`USE_LANGCHAIN_PIPELINE=true`).
+- Current retrieval model/scoring remains custom (`telepix/PIXIE-Splade-v1.0` + hybrid rerank), wrapped by a LangChain retriever adapter.
+- MCP image analysis is invoked through a LangChain `StructuredTool` wrapper.
+
+To force the previous legacy orchestration path:
+
+```bash
+export USE_LANGCHAIN_PIPELINE=false
+```
 
 ## Access control (verified IDs)
 
