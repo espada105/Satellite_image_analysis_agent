@@ -2,13 +2,25 @@ import time
 from collections.abc import AsyncGenerator
 
 from orchestrator_api.config import settings
-from orchestrator_api.llm import decide_image_ops, decide_tool_usage, generate_answer_with_llm, stream_answer_with_llm
+from orchestrator_api.llm import (
+    decide_image_ops,
+    decide_tool_usage,
+    generate_answer_with_llm,
+    stream_answer_with_llm,
+)
 from orchestrator_api.mcp_client import analyze_image
 from orchestrator_api.rag.retrieve import retrieve_citations
 from orchestrator_api.schemas import AnalysisResult, ChatRequest, ChatResponse, TraceInfo
+from orchestrator_api.services.chat_langchain_pipeline import (
+    run_chat_langchain,
+    run_chat_stream_langchain,
+)
 
 
 async def run_chat(request: ChatRequest) -> ChatResponse:
+    if settings.use_langchain_pipeline:
+        return await run_chat_langchain(request)
+
     start = time.perf_counter()
 
     decision = await decide_tool_usage(
@@ -57,6 +69,11 @@ async def run_chat(request: ChatRequest) -> ChatResponse:
 
 
 async def run_chat_stream(request: ChatRequest) -> AsyncGenerator[dict, None]:
+    if settings.use_langchain_pipeline:
+        async for event in run_chat_stream_langchain(request):
+            yield event
+        return
+
     start = time.perf_counter()
 
     yield {"type": "status", "stage": "route", "message": "deciding tool usage"}

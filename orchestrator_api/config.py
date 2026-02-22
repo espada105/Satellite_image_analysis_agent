@@ -27,6 +27,7 @@ class Settings:
     rag_bm25_k1: float = float(os.getenv("RAG_BM25_K1", "1.2"))
     rag_bm25_b: float = float(os.getenv("RAG_BM25_B", "0.75"))
     rag_rerank_heading_boost: float = float(os.getenv("RAG_RERANK_HEADING_BOOST", "0.15"))
+    use_langchain_pipeline: bool = os.getenv("USE_LANGCHAIN_PIPELINE", "true").lower() == "true"
 
 
 settings = Settings()
