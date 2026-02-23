@@ -8,6 +8,7 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
+    use_langchain_pipeline: bool = os.getenv("USE_LANGCHAIN_PIPELINE", "true").lower() == "true"
     mcp_base_url: str = os.getenv("MCP_BASE_URL", "http://127.0.0.1:8100")
     rag_index_name: str = os.getenv("RAG_INDEX_NAME", "default")
     rag_store_db_path: str = os.getenv("RAG_STORE_DB_PATH", "data/vector_store/rag_store.sqlite3")
@@ -27,8 +28,6 @@ class Settings:
     rag_bm25_k1: float = float(os.getenv("RAG_BM25_K1", "1.2"))
     rag_bm25_b: float = float(os.getenv("RAG_BM25_B", "0.75"))
     rag_rerank_heading_boost: float = float(os.getenv("RAG_RERANK_HEADING_BOOST", "0.15"))
-    use_langchain_pipeline: bool = os.getenv("USE_LANGCHAIN_PIPELINE", "true").lower() == "true"
-
 
 settings = Settings()
 
