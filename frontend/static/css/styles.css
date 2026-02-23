@@ -232,8 +232,8 @@ button {
 .artifact-image {
   display: block;
   margin-top: 8px;
-  width: min(260px, 62vw);
-  max-height: 200px;
+  width: min(480px, 480px);
+  max-height: 480px;
   object-fit: contain;
   border-radius: 8px;
   border: 1px solid var(--line);
