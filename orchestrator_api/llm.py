@@ -103,24 +103,32 @@ async def decide_tool_usage(
                 reason=str(parsed.reason or "llm_router"),
             )
         except Exception as exc:  # noqa: BLE001
-            legacy = await _legacy_json_prompt_call(
-                system_prompt=ROUTER_PROMPT,
-                user_payload={"question": question, "image_available": image_available},
-                timeout_s=timeout_s,
-            )
-            if legacy:
+            try:
+                legacy = await _legacy_json_prompt_call(
+                    system_prompt=ROUTER_PROMPT,
+                    user_payload={"question": question, "image_available": image_available},
+                    timeout_s=timeout_s,
+                )
+                if legacy:
+                    return ToolDecision(
+                        use_rag=bool(legacy.get("use_rag", fallback.use_rag)),
+                        use_mcp=bool(legacy.get("use_mcp", fallback.use_mcp)) and image_available,
+                        reason=str(legacy.get("reason", "llm_router")),
+                        error=f"langchain_failed:{exc}",
+                    )
                 return ToolDecision(
-                    use_rag=bool(legacy.get("use_rag", fallback.use_rag)),
-                    use_mcp=bool(legacy.get("use_mcp", fallback.use_mcp)) and image_available,
-                    reason=str(legacy.get("reason", "llm_router")),
+                    use_rag=fallback.use_rag,
+                    use_mcp=fallback.use_mcp,
+                    reason=fallback.reason,
                     error=f"langchain_failed:{exc}",
                 )
-            return ToolDecision(
-                use_rag=fallback.use_rag,
-                use_mcp=fallback.use_mcp,
-                reason=fallback.reason,
-                error=f"langchain_failed:{exc}",
-            )
+            except Exception as legacy_exc:  # noqa: BLE001
+                return ToolDecision(
+                    use_rag=fallback.use_rag,
+                    use_mcp=fallback.use_mcp,
+                    reason=fallback.reason,
+                    error=f"langchain_failed:{exc}; legacy_failed:{legacy_exc}",
+                )
 
     try:
         parsed = await _legacy_json_prompt_call(
@@ -182,14 +190,17 @@ async def generate_answer_with_llm(
             if text:
                 return text, None
         except Exception as exc:  # noqa: BLE001
-            legacy = await _legacy_text_prompt_call(
-                system_prompt=SYSTEM_PROMPT,
-                user_payload=context,
-                timeout_s=timeout_s,
-            )
-            if legacy:
-                return legacy.strip(), f"langchain_failed:{exc}"
-            return None, str(exc)
+            try:
+                legacy = await _legacy_text_prompt_call(
+                    system_prompt=SYSTEM_PROMPT,
+                    user_payload=context,
+                    timeout_s=timeout_s,
+                )
+                if legacy:
+                    return legacy.strip(), f"langchain_failed:{exc}"
+                return None, str(exc)
+            except Exception as legacy_exc:  # noqa: BLE001
+                return None, f"langchain_failed:{exc}; legacy_failed:{legacy_exc}"
 
     try:
         response_text = await _legacy_text_prompt_call(
@@ -230,16 +241,19 @@ async def decide_image_ops(
             reason = str(parsed.reason or "llm_ops_selector")
             return chosen_ops, reason
         except Exception as exc:  # noqa: BLE001
-            legacy = await _legacy_json_prompt_call(
-                system_prompt=OPS_SELECTOR_PROMPT,
-                user_payload=selector_input,
-                timeout_s=timeout_s,
-            )
-            if legacy:
-                chosen_ops = _normalize_selected_ops(legacy.get("ops", []))
-                if chosen_ops:
-                    return chosen_ops, f"{legacy.get('reason', 'llm_ops_selector')}:legacy"
-            return fallback_ops, f"ops_rule_fallback:{exc}"
+            try:
+                legacy = await _legacy_json_prompt_call(
+                    system_prompt=OPS_SELECTOR_PROMPT,
+                    user_payload=selector_input,
+                    timeout_s=timeout_s,
+                )
+                if legacy:
+                    chosen_ops = _normalize_selected_ops(legacy.get("ops", []))
+                    if chosen_ops:
+                        return chosen_ops, f"{legacy.get('reason', 'llm_ops_selector')}:legacy"
+                return fallback_ops, f"ops_rule_fallback:{exc}"
+            except Exception as legacy_exc:  # noqa: BLE001
+                return fallback_ops, f"ops_rule_fallback:{exc}; legacy_failed:{legacy_exc}"
 
     try:
         parsed = await _legacy_json_prompt_call(

@@ -37,5 +37,23 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-      - ./models:/app/models
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - orchestrator
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
