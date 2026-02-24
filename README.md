@@ -185,15 +185,15 @@ uv run ruff check .
 Included templates:
 - `Dockerfile.orchestrator`
 - `Dockerfile.mcp`
-- `docker-compose.yml` (orchestrator + mcp + caddy reverse proxy)
-- `deploy/Caddyfile` (HTTPS via Caddy + domain)
+- `docker-compose.yml` (orchestrator + mcp)
+- `deploy/Caddyfile` (optional HTTPS reverse proxy template)
 - `deploy/grafana-dashboard.json` (Grafana import template)
 - `.github/workflows/ci.yml` (lint/test + docker build)
 
 Example:
 
 ```bash
-export DOMAIN=your-domain.example.com
+export DOMAIN=your-domain.example.com  # local test: localhost
 export VERIFIED_USER_IDS=alice,bob
 export LLM_API_KEY=...
 docker compose up -d --build
