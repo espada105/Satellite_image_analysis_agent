@@ -24,6 +24,8 @@ COPY --from=build /bin/uvx /bin/uvx
 
 # PATH에 uv와 가상환경 추가
 ENV PATH="/app/.venv/bin:/bin:$PATH"
+# HuggingFace 캐시를 마운트된 볼륨(/app/models)으로 사용 → 재빌드/재시작 시 재다운로드 방지
+ENV HF_HOME=/app/models
 
 COPY orchestrator_api /app/orchestrator_api
 COPY frontend /app/frontend

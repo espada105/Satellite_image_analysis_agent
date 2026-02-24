@@ -19,6 +19,7 @@ services:
     env_file:
       - .env
     environment:
+      - HF_HOME=/app/models
       - MCP_BASE_URL=http://mcp:8100
       - VERIFIED_USER_IDS=${VERIFIED_USER_IDS}
       - LLM_API_KEY=${LLM_API_KEY}
