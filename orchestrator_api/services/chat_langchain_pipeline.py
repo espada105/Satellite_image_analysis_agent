@@ -96,7 +96,6 @@ async def run_chat_stream_langchain(request: ChatRequest) -> AsyncGenerator[dict
         for chunk in _chunk_text(state["answer"], size=24):
             yield {"type": "answer_chunk", "text": chunk}
 
-    state["answer"] = _append_mcp_tools_to_answer(state["answer"], state["analysis"])
     response = _build_response(state, start=start)
     yield {"type": "final", "data": response.model_dump()}
 

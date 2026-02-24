@@ -11,6 +11,8 @@ const logoutBtn = document.getElementById("logoutBtn");
 const llmStatus = document.getElementById("llmStatus");
 let typingBubble = null;
 let typingRawText = "";
+let lastImageUri = "";
+let lastPreviewUrl = "";
 
 function appendTextMessage(role, text) {
   const div = document.createElement("div");
@@ -344,19 +346,30 @@ chatForm?.addEventListener("submit", async (event) => {
 
   try {
     setProgressStatus("요청 전송 중", true);
-    let imageUri = "";
+    let imageUri = lastImageUri;
+    let reusedPreviousImage = false;
 
     if (hasImageFile) {
       const uploaded = await uploadSelectedImage();
       imageUri = uploaded.image_uri || "";
       const previewUrl = uploaded.preview_url || "";
+      lastImageUri = imageUri;
+      lastPreviewUrl = previewUrl;
       if (previewUrl) {
         appendImageMessage("user", previewUrl, imageFileInput.files[0]?.name || "uploaded image");
       }
       imageFileInput.value = "";
+    } else if (imageUri) {
+      reusedPreviousImage = true;
+      if (lastPreviewUrl) {
+        appendImageMessage("user", lastPreviewUrl, "previous image reused");
+      }
     }
 
     appendTextMessage("user", question || "(질문 없음, 이미지 분석 요청)");
+    if (reusedPreviousImage) {
+      appendTextMessage("bot", "이전 업로드 이미지를 재사용해 분석합니다.");
+    }
     questionInput.value = "";
 
     const payload = { question, top_k: 3 };

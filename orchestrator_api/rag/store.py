@@ -138,8 +138,13 @@ class SparseVectorStore:
 
     def count(self) -> int:
         with self._lock:
-            self._ensure_ready_locked()
-            return len(self._records)
+            # Avoid forcing model initialization just to report document count.
+            if self._disk_loaded:
+                return len(self._records)
+            self._init_db()
+            with self._connect() as conn:
+                row = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()
+            return int(row[0]) if row else 0
 
     def backend_info(self) -> dict[str, str | None]:
         with self._lock:
