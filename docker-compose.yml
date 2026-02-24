@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.mcp
+    env_file:
+      - .env
     environment:
       - LOG_LEVEL=INFO
       - LOG_JSON=true
@@ -14,7 +16,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.orchestrator
+    env_file:
+      - .env
     environment:
+      - HF_HOME=/app/models
       - MCP_BASE_URL=http://mcp:8100
       - VERIFIED_USER_IDS=${VERIFIED_USER_IDS}
       - LLM_API_KEY=${LLM_API_KEY}
@@ -32,4 +37,5 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
+      - ./models:/app/models
     restart: unless-stopped
