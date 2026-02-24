@@ -107,6 +107,9 @@ uv run uvicorn orchestrator_api.main:app \
   --reload-exclude ".venv/*" --reload-exclude "data/*"
 
 # MCP server (separate terminal)
+uv run satellite-mcp-server
+
+# or (dev reload)
 uv run uvicorn mcp_satellite_server.server:app \
   --host 0.0.0.0 --port 8100 --reload \
   --reload-dir mcp_satellite_server \
@@ -168,6 +171,7 @@ Test isolation:
 - The backend returns `image_uri` and uses it for MCP analysis.
 - MCP analysis artifacts (mask/edge results) are saved under `data/imagery/artifacts`.
 - Artifact preview URLs are returned as `/imagery/artifacts/<file>.png`.
+- MCP server exposes standard MCP streamable HTTP endpoint at `/mcp`.
 
 ## Test commands
 

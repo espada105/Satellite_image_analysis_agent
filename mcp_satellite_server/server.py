@@ -1,17 +1,11 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+import os
+
 from fastmcp import FastMCP
 
 from mcp_satellite_server.opencv_ops import analyze_satellite_image
-from mcp_satellite_server.schemas import AnalyzeRequest, AnalyzeResponse, McpRpcRequest
+from mcp_satellite_server.schemas import AnalyzeRequest, AnalyzeResponse
 
 mcp = FastMCP(name="satellite-mcp", version="0.4.0")
-mcp_app = mcp.http_app(
-    path="/mcp",
-    json_response=True,
-    stateless_http=True,
-    transport="http",
-)
 
 
 @mcp.tool(
@@ -28,35 +22,30 @@ def analyze_satellite_image_tool(
     return AnalyzeResponse(ops=results).model_dump()
 
 
-app = FastAPI(title="Satellite MCP Server", version="0.4.0", lifespan=mcp_app.lifespan)
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-# Backward-compatible REST endpoint for existing orchestrator/tests.
-@app.post("/tools/analyze_satellite_image", response_model=AnalyzeResponse)
-def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
-    results = analyze_satellite_image(payload.image_uri, payload.ops, payload.roi)
-    return AnalyzeResponse(ops=results)
-
-
-# Legacy custom SSE transport endpoint is retired in FastMCP mode.
-@app.get("/mcp/sse")
-def mcp_sse_deprecated() -> JSONResponse:
-    return JSONResponse(
-        status_code=410,
-        content={"detail": "legacy /mcp/sse transport removed; use streamable HTTP on /mcp"},
+def create_app():
+    return mcp.http_app(
+        path="/mcp",
+        json_response=True,
+        stateless_http=True,
+        transport="http",
     )
 
 
-# Legacy endpoint kept for explicit compatibility with old tests/clients.
-@app.post("/mcp/messages/{session_id}")
-async def mcp_messages_deprecated(session_id: str, payload: McpRpcRequest) -> dict[str, str]:
-    del payload
-    raise HTTPException(status_code=404, detail=f"Unknown MCP session: {session_id}")
+app = create_app()
 
 
-app.mount("/", mcp_app)
+def main() -> None:
+    host = os.getenv("MCP_HOST", "0.0.0.0")
+    port = int(os.getenv("MCP_PORT", "8100"))
+    mcp.run(
+        transport="http",
+        host=host,
+        port=port,
+        path="/mcp",
+        json_response=True,
+        stateless_http=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
