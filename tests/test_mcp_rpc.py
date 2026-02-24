@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from fastapi.testclient import TestClient
 
-from mcp_satellite_server.server import app
+from mcp_satellite_server.server import create_app
 
 
 def test_mcp_jsonrpc_tools_call(tmp_path: Path) -> None:
@@ -19,7 +19,7 @@ def test_mcp_jsonrpc_tools_call(tmp_path: Path) -> None:
         "Content-Type": "application/json",
     }
 
-    with TestClient(app) as client:
+    with TestClient(create_app()) as client:
         init_resp = client.post(
             "/mcp",
             json={

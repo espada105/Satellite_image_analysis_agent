@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from urllib.request import urlopen
 from uuid import uuid4
@@ -8,8 +9,7 @@ import numpy as np
 from mcp_satellite_server.schemas import OpResult
 
 SUPPORTED_OPS = {"edges", "threshold", "morphology", "cloud_mask_like", "masking_like"}
-ROOT_DIR = Path(__file__).resolve().parent.parent
-ARTIFACT_DIR = ROOT_DIR / "data" / "imagery" / "artifacts"
+ARTIFACT_DIR = Path(os.getenv("MCP_ARTIFACT_DIR", "data/imagery/artifacts")).resolve()
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
 
