@@ -1,3 +1,16 @@
+FROM python:3.11-slim AS build
+
+WORKDIR /app
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY pyproject.toml uv.lock README.md ./
+
+RUN apt update && \
+    apt install -y build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN uv sync --no-dev
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -5,18 +18,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 libgl1 libsm6 libxext6 libxrender1 \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app/.venv /app/.venv
+COPY --from=build /bin/uv /bin/uv
+COPY --from=build /bin/uvx /bin/uvx
 
-COPY pyproject.toml README.md /app/
+# PATH에 uv와 가상환경 추가
+ENV PATH="/app/.venv/bin:/bin:$PATH"
+# HuggingFace 캐시를 마운트된 볼륨(/app/models)으로 사용 → 재빌드/재시작 시 재다운로드 방지
+ENV HF_HOME=/app/models
+
 COPY orchestrator_api /app/orchestrator_api
-COPY mcp_satellite_server /app/mcp_satellite_server
 COPY frontend /app/frontend
-COPY data /app/data
-
-RUN pip install --no-cache-dir .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "orchestrator_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "orchestrator_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

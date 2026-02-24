@@ -24,3 +24,6 @@ __pycache__/
 *.log
 data/imagery/uploads/
 data/imagery/artifacts/
+
+# Models
+models/

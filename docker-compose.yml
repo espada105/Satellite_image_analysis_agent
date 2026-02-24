@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.mcp
-    command: ["satellite-mcp-server"]
     env_file:
       - .env
     environment:
@@ -20,6 +19,7 @@ services:
     env_file:
       - .env
     environment:
+      - HF_HOME=/app/models
       - MCP_BASE_URL=http://mcp:8100
       - VERIFIED_USER_IDS=${VERIFIED_USER_IDS}
       - LLM_API_KEY=${LLM_API_KEY}
@@ -38,3 +38,22 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - orchestrator
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
