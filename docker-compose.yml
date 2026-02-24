@@ -1,10 +1,10 @@
-version: "3.9"
-
 services:
   mcp:
     build:
       context: .
       dockerfile: Dockerfile.mcp
+    env_file:
+      - .env
     environment:
       - LOG_LEVEL=INFO
       - LOG_JSON=true
@@ -16,6 +16,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.orchestrator
+    env_file:
+      - .env
     environment:
       - MCP_BASE_URL=http://mcp:8100
       - VERIFIED_USER_IDS=${VERIFIED_USER_IDS}
@@ -30,25 +32,9 @@ services:
       - LOG_JSON=true
     depends_on:
       - mcp
+    ports:
+      - "8000:8000"
     volumes:
       - ./data:/app/data
+      - ./models:/app/models
     restart: unless-stopped
-
-  caddy:
-    image: caddy:2.8
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - DOMAIN=${DOMAIN}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - orchestrator
-    restart: unless-stopped
-
-volumes:
-  caddy_data:
-  caddy_config:
