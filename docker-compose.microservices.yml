@@ -1,0 +1,95 @@
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  file-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservice
+    command: uv run uvicorn main:app --app-dir /app/services/file-service --host 0.0.0.0 --port 8011
+    env_file:
+      - .env
+    ports:
+      - "8011:8011"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  retrieve-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservice
+    command: uv run uvicorn main:app --app-dir /app/services/retrieve-service --host 0.0.0.0 --port 8012
+    env_file:
+      - .env
+    environment:
+      - MCP_BASE_URL=http://mcp:8100
+      - HF_HOME=/app/models
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+    depends_on:
+      - mcp
+    ports:
+      - "8012:8012"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: unless-stopped
+
+  embedding-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservice
+    command: uv run uvicorn main:app --app-dir /app/services/embedding-service --host 0.0.0.0 --port 8013
+    env_file:
+      - .env
+    ports:
+      - "8013:8013"
+    restart: unless-stopped
+
+  health-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservice
+    command: uv run uvicorn main:app --app-dir /app/services/health-service --host 0.0.0.0 --port 8014
+    env_file:
+      - .env
+    environment:
+      - MCP_BASE_URL=http://mcp:8100
+    depends_on:
+      - mcp
+    ports:
+      - "8014:8014"
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservice
+    command: uv run uvicorn main:app --app-dir /app/services/api-gateway --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    environment:
+      - FILE_SERVICE_BASE_URL=http://file-service:8011
+      - RETRIEVE_SERVICE_BASE_URL=http://retrieve-service:8012
+      - EMBEDDING_SERVICE_BASE_URL=http://embedding-service:8013
+      - HEALTH_SERVICE_BASE_URL=http://health-service:8014
+    depends_on:
+      - file-service
+      - retrieve-service
+      - embedding-service
+      - health-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: unless-stopped

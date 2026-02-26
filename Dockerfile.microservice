@@ -1,0 +1,37 @@
+FROM python:3.11-slim AS build
+
+WORKDIR /app
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY pyproject.toml uv.lock README.md ./
+
+RUN apt update && \
+    apt install -y build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN uv sync --no-dev
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY --from=build /app/.venv /app/.venv
+COPY --from=build /bin/uv /bin/uv
+COPY --from=build /bin/uvx /bin/uvx
+
+ENV PATH="/app/.venv/bin:/bin:$PATH"
+ENV HF_HOME=/app/models
+
+COPY services /app/services
+COPY packages /app/packages
+COPY orchestrator_api /app/orchestrator_api
+COPY mcp_satellite_server /app/mcp_satellite_server
+COPY data /app/data
+COPY frontend /app/frontend
+
+EXPOSE 8000
+
+CMD ["uv", "run", "uvicorn", "main:app", "--app-dir", "/app/services/api-gateway", "--host", "0.0.0.0", "--port", "8000"]
